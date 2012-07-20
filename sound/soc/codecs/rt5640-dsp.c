@@ -826,7 +826,7 @@ static int rt5640_dsp_rate(struct snd_soc_codec *codec, int rate)
 {
 	struct rt5640_dsp_param param;
 	int ret, i, tab_num;
-	unsigned short (*rate_tab)[2];
+	const u16 (*rate_tab)[2];
 
 	if (rate != 48000 &&  rate != 44100 && rate != 16000)
 		return -EINVAL;
@@ -878,7 +878,7 @@ static int rt5640_dsp_set_mode(struct snd_soc_codec *codec, int mode)
 {
 	struct rt5640_dsp_param param;
 	int ret, i, tab_num;
-	unsigned short (*mode_tab)[2];
+	const u16 (*mode_tab)[2];
 
 	switch (mode) {
 	case RT5640_DSP_AEC_NS_FENS:
@@ -1045,7 +1045,7 @@ static ssize_t rt5640_dsp_show(struct device *dev,
 	struct i2c_client *client = to_i2c_client(dev);
 	struct rt5640_priv *rt5640 = i2c_get_clientdata(client);
 	struct snd_soc_codec *codec = rt5640->codec;
-	unsigned short (*rt5640_dsp_tab)[2];
+	const u16 (*rt5640_dsp_tab)[2];
 	unsigned int val;
 	int cnt = 0, i, tab_num;
 
