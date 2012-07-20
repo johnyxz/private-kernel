@@ -272,75 +272,75 @@ static struct switch_dev tegra_rt5640_headset_switch = {
 	.name = "h2w",
 };
 
-static int tegra_rt5640_jack_notifier(struct notifier_block *self,
-			      unsigned long action, void *dev)
-{
-	struct snd_soc_jack *jack = dev;
-	struct snd_soc_codec *codec = jack->codec;
-	struct snd_soc_card *card = codec->card;
-	struct tegra_rt5640 *machine = snd_soc_card_get_drvdata(card);
-	struct tegra_rt5640_platform_data *pdata = machine->pdata;
-	enum headset_state state = BIT_NO_HEADSET;
-	unsigned char status_jack;
-#if 0
-	if (jack == &tegra_rt5640_hp_jack) {
-		if (action) {
-			/* Enable ext mic; enable signal is active-low */
-			gpio_direction_output(pdata->gpio_ext_mic_en, 0);
-			if (!strncmp(machine->pdata->codec_name, "rt5639", 6))
-				status_jack = rt5639_headset_detect(codec, 1);
-			else if (!strncmp(machine->pdata->codec_name, "rt5640",
-									    6))
-				status_jack = rt5640_headset_detect(codec, 1);
+// static int tegra_rt5640_jack_notifier(struct notifier_block *self,
+// 			      unsigned long action, void *dev)
+// {
+// 	struct snd_soc_jack *jack = dev;
+// 	struct snd_soc_codec *codec = jack->codec;
+// 	struct snd_soc_card *card = codec->card;
+// 	struct tegra_rt5640 *machine = snd_soc_card_get_drvdata(card);
+// 	struct tegra_rt5640_platform_data *pdata = machine->pdata;
+// 	enum headset_state state = BIT_NO_HEADSET;
+// 	unsigned char status_jack;
+// #if 0
+// 	if (jack == &tegra_rt5640_hp_jack) {
+// 		if (action) {
+// 			/* Enable ext mic; enable signal is active-low */
+// 			gpio_direction_output(pdata->gpio_ext_mic_en, 0);
+// 			if (!strncmp(machine->pdata->codec_name, "rt5639", 6))
+// 				status_jack = rt5639_headset_detect(codec, 1);
+// 			else if (!strncmp(machine->pdata->codec_name, "rt5640",
+// 									    6))
+// 				status_jack = rt5640_headset_detect(codec, 1);
+// 
+// 			machine->jack_status &= ~SND_JACK_HEADPHONE;
+// 			machine->jack_status &= ~SND_JACK_MICROPHONE;
+// 			if (status_jack == RT5639_HEADPHO_DET ||
+// 			    status_jack == RT5640_HEADPHO_DET)
+// 					machine->jack_status |=
+// 							SND_JACK_HEADPHONE;
+// 			else if (status_jack == RT5639_HEADSET_DET ||
+// 				 status_jack == RT5640_HEADSET_DET) {
+// 					machine->jack_status |=
+// 							SND_JACK_HEADPHONE;
+// 					machine->jack_status |=
+// 							SND_JACK_MICROPHONE;
+// 			}
+// 		} else {
+// 			/* Disable ext mic; enable signal is active-low */
+// 			gpio_direction_output(pdata->gpio_ext_mic_en, 1);
+// 			if (!strncmp(machine->pdata->codec_name, "rt5639", 6))
+// 				rt5639_headset_detect(codec, 0);
+// 			else if (!strncmp(machine->pdata->codec_name, "rt5640",
+// 									    6))
+// 				rt5640_headset_detect(codec, 0);
+// 
+// 			machine->jack_status &= ~SND_JACK_HEADPHONE;
+// 			machine->jack_status &= ~SND_JACK_MICROPHONE;
+// 		}
+// 	}
+// #endif
+// 	switch (machine->jack_status) {
+// 	case SND_JACK_HEADPHONE:
+// 		state = BIT_HEADSET_NO_MIC;
+// 		break;
+// 	case SND_JACK_HEADSET:
+// 		state = BIT_HEADSET;
+// 		break;
+// 	case SND_JACK_MICROPHONE:
+// 		/* mic: would not report */
+// 	default:
+// 		state = BIT_NO_HEADSET;
+// 	}
+// 
+// 	switch_set_state(&tegra_rt5640_headset_switch, state);
+// 
+// 	return NOTIFY_OK;
+// }
 
-			machine->jack_status &= ~SND_JACK_HEADPHONE;
-			machine->jack_status &= ~SND_JACK_MICROPHONE;
-			if (status_jack == RT5639_HEADPHO_DET ||
-			    status_jack == RT5640_HEADPHO_DET)
-					machine->jack_status |=
-							SND_JACK_HEADPHONE;
-			else if (status_jack == RT5639_HEADSET_DET ||
-				 status_jack == RT5640_HEADSET_DET) {
-					machine->jack_status |=
-							SND_JACK_HEADPHONE;
-					machine->jack_status |=
-							SND_JACK_MICROPHONE;
-			}
-		} else {
-			/* Disable ext mic; enable signal is active-low */
-			gpio_direction_output(pdata->gpio_ext_mic_en, 1);
-			if (!strncmp(machine->pdata->codec_name, "rt5639", 6))
-				rt5639_headset_detect(codec, 0);
-			else if (!strncmp(machine->pdata->codec_name, "rt5640",
-									    6))
-				rt5640_headset_detect(codec, 0);
-
-			machine->jack_status &= ~SND_JACK_HEADPHONE;
-			machine->jack_status &= ~SND_JACK_MICROPHONE;
-		}
-	}
-#endif
-	switch (machine->jack_status) {
-	case SND_JACK_HEADPHONE:
-		state = BIT_HEADSET_NO_MIC;
-		break;
-	case SND_JACK_HEADSET:
-		state = BIT_HEADSET;
-		break;
-	case SND_JACK_MICROPHONE:
-		/* mic: would not report */
-	default:
-		state = BIT_NO_HEADSET;
-	}
-
-	switch_set_state(&tegra_rt5640_headset_switch, state);
-
-	return NOTIFY_OK;
-}
-
-static struct notifier_block tegra_rt5640_jack_detect_nb = {
-	.notifier_call = tegra_rt5640_jack_notifier,
-};
+// static struct notifier_block tegra_rt5640_jack_detect_nb = {
+// 	.notifier_call = tegra_rt5640_jack_notifier,
+// };
 #else
 static struct snd_soc_jack_pin tegra_rt5640_hp_jack_pins[] = {
 	{
@@ -351,87 +351,87 @@ static struct snd_soc_jack_pin tegra_rt5640_hp_jack_pins[] = {
 
 #endif
 
-static int tegra_rt5640_event_int_spk(struct snd_soc_dapm_widget *w,
-					struct snd_kcontrol *k, int event)
-{
-	struct snd_soc_dapm_context *dapm = w->dapm;
-	struct snd_soc_card *card = dapm->card;
-	struct tegra_rt5640 *machine = snd_soc_card_get_drvdata(card);
-	struct tegra_rt5640_platform_data *pdata = machine->pdata;
+// static int tegra_rt5640_event_int_spk(struct snd_soc_dapm_widget *w,
+// 					struct snd_kcontrol *k, int event)
+// {
+// 	struct snd_soc_dapm_context *dapm = w->dapm;
+// 	struct snd_soc_card *card = dapm->card;
+// 	struct tegra_rt5640 *machine = snd_soc_card_get_drvdata(card);
+// 	struct tegra_rt5640_platform_data *pdata = machine->pdata;
+// 
+// 	if (machine->spk_reg) {
+// 		if (SND_SOC_DAPM_EVENT_ON(event))
+// 			regulator_enable(machine->spk_reg);
+// 		else
+// 			regulator_disable(machine->spk_reg);
+// 	}
+// 
+// 	if (!(machine->gpio_requested & GPIO_SPKR_EN))
+// 		return 0;
+// 
+// 	gpio_set_value_cansleep(pdata->gpio_spkr_en,
+// 				SND_SOC_DAPM_EVENT_ON(event));
+// 
+// 	return 0;
+// }
 
-	if (machine->spk_reg) {
-		if (SND_SOC_DAPM_EVENT_ON(event))
-			regulator_enable(machine->spk_reg);
-		else
-			regulator_disable(machine->spk_reg);
-	}
+// static int tegra_rt5640_event_hp(struct snd_soc_dapm_widget *w,
+// 					struct snd_kcontrol *k, int event)
+// {
+// 	struct snd_soc_dapm_context *dapm = w->dapm;
+// 	struct snd_soc_card *card = dapm->card;
+// 	struct tegra_rt5640 *machine = snd_soc_card_get_drvdata(card);
+// 	struct tegra_rt5640_platform_data *pdata = machine->pdata;
+// 
+// 	if (!(machine->gpio_requested & GPIO_HP_MUTE))
+// 		return 0;
+// 
+// 	gpio_set_value_cansleep(pdata->gpio_hp_mute,
+// 				!SND_SOC_DAPM_EVENT_ON(event));
+// 
+// 	return 0;
+// }
 
-	if (!(machine->gpio_requested & GPIO_SPKR_EN))
-		return 0;
+// static int tegra_rt5640_event_int_mic(struct snd_soc_dapm_widget *w,
+// 					struct snd_kcontrol *k, int event)
+// {
+// 	struct snd_soc_dapm_context *dapm = w->dapm;
+// 	struct snd_soc_card *card = dapm->card;
+// 	struct tegra_rt5640 *machine = snd_soc_card_get_drvdata(card);
+// 	struct tegra_rt5640_platform_data *pdata = machine->pdata;
+// 
+// 	if (machine->dmic_reg) {
+// 		if (SND_SOC_DAPM_EVENT_ON(event))
+// 			regulator_enable(machine->dmic_reg);
+// 		else
+// 			regulator_disable(machine->dmic_reg);
+// 	}
+// 
+// 	if (!(machine->gpio_requested & GPIO_INT_MIC_EN))
+// 		return 0;
+// 
+// 	gpio_set_value_cansleep(pdata->gpio_int_mic_en,
+// 				SND_SOC_DAPM_EVENT_ON(event));
+// 
+// 	return 0;
+// }
 
-	gpio_set_value_cansleep(pdata->gpio_spkr_en,
-				SND_SOC_DAPM_EVENT_ON(event));
-
-	return 0;
-}
-
-static int tegra_rt5640_event_hp(struct snd_soc_dapm_widget *w,
-					struct snd_kcontrol *k, int event)
-{
-	struct snd_soc_dapm_context *dapm = w->dapm;
-	struct snd_soc_card *card = dapm->card;
-	struct tegra_rt5640 *machine = snd_soc_card_get_drvdata(card);
-	struct tegra_rt5640_platform_data *pdata = machine->pdata;
-
-	if (!(machine->gpio_requested & GPIO_HP_MUTE))
-		return 0;
-
-	gpio_set_value_cansleep(pdata->gpio_hp_mute,
-				!SND_SOC_DAPM_EVENT_ON(event));
-
-	return 0;
-}
-
-static int tegra_rt5640_event_int_mic(struct snd_soc_dapm_widget *w,
-					struct snd_kcontrol *k, int event)
-{
-	struct snd_soc_dapm_context *dapm = w->dapm;
-	struct snd_soc_card *card = dapm->card;
-	struct tegra_rt5640 *machine = snd_soc_card_get_drvdata(card);
-	struct tegra_rt5640_platform_data *pdata = machine->pdata;
-
-	if (machine->dmic_reg) {
-		if (SND_SOC_DAPM_EVENT_ON(event))
-			regulator_enable(machine->dmic_reg);
-		else
-			regulator_disable(machine->dmic_reg);
-	}
-
-	if (!(machine->gpio_requested & GPIO_INT_MIC_EN))
-		return 0;
-
-	gpio_set_value_cansleep(pdata->gpio_int_mic_en,
-				SND_SOC_DAPM_EVENT_ON(event));
-
-	return 0;
-}
-
-static int tegra_rt5640_event_ext_mic(struct snd_soc_dapm_widget *w,
-					struct snd_kcontrol *k, int event)
-{
-	struct snd_soc_dapm_context *dapm = w->dapm;
-	struct snd_soc_card *card = dapm->card;
-	struct tegra_rt5640 *machine = snd_soc_card_get_drvdata(card);
-	struct tegra_rt5640_platform_data *pdata = machine->pdata;
-
-	if (!(machine->gpio_requested & GPIO_EXT_MIC_EN))
-		return 0;
-
-	gpio_set_value_cansleep(pdata->gpio_ext_mic_en,
-				!SND_SOC_DAPM_EVENT_ON(event));
-
-	return 0;
-}
+// static int tegra_rt5640_event_ext_mic(struct snd_soc_dapm_widget *w,
+// 					struct snd_kcontrol *k, int event)
+// {
+// 	struct snd_soc_dapm_context *dapm = w->dapm;
+// 	struct snd_soc_card *card = dapm->card;
+// 	struct tegra_rt5640 *machine = snd_soc_card_get_drvdata(card);
+// 	struct tegra_rt5640_platform_data *pdata = machine->pdata;
+// 
+// 	if (!(machine->gpio_requested & GPIO_EXT_MIC_EN))
+// 		return 0;
+// 
+// 	gpio_set_value_cansleep(pdata->gpio_ext_mic_en,
+// 				!SND_SOC_DAPM_EVENT_ON(event));
+// 
+// 	return 0;
+// }
 
 static const struct snd_soc_dapm_widget cardhu_dapm_widgets[] = {
 	SND_SOC_DAPM_SPK("Int Spk", NULL),
@@ -466,7 +466,7 @@ static int tegra_rt5640_init(struct snd_soc_pcm_runtime *rtd)
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
 	struct snd_soc_card *card = codec->card;
 	struct tegra_rt5640 *machine = snd_soc_card_get_drvdata(card);
-	struct tegra_rt5640_platform_data *pdata = machine->pdata;
+//	struct tegra_rt5640_platform_data *pdata = machine->pdata;
 	int ret;
 
 
