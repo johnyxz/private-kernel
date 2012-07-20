@@ -67,7 +67,7 @@ static void __exit    headset_exit(void);
 static irqreturn_t   	detect_irq_handler(int irq, void *dev_id);
 static void 		detection_work(struct work_struct *work);
 static int               	jack_config_gpio(void);
-static irqreturn_t   	lineout_irq_handler(int irq, void *dev_id);
+//static irqreturn_t   	lineout_irq_handler(int irq, void *dev_id);
 static void 		lineout_work_queue(struct work_struct *work);
 static int               	lineout_config_gpio(void);
 static void 		detection_work(struct work_struct *work);
@@ -144,7 +144,7 @@ static void tristate_uart(void)
 {
         enum tegra_pingroup pingroup = TEGRA_PINGROUP_ULPI_DATA0;
         enum tegra_pullupdown pupd = TEGRA_PUPD_PULL_DOWN;
-        enum tegra_pin_io io = TEGRA_PIN_INPUT;
+//        enum tegra_pin_io io = TEGRA_PIN_INPUT;
 	enum tegra_tristate tristate = TEGRA_TRI_TRISTATE;
 
         tegra_pinmux_set_pullupdown(pingroup, pupd);
@@ -155,7 +155,7 @@ static void tristate_uart(void)
 static void pulldown_uart(void)
 {
 	enum tegra_pingroup pingroupTx = TEGRA_PINGROUP_ULPI_DATA0;
-	enum tegra_pingroup pingroupRx = TEGRA_PINGROUP_ULPI_DATA1;
+//	enum tegra_pingroup pingroupRx = TEGRA_PINGROUP_ULPI_DATA1;
         enum tegra_pullupdown pupd = TEGRA_PUPD_PULL_DOWN;
         enum tegra_pin_io io = TEGRA_PIN_INPUT;
 
@@ -407,11 +407,11 @@ static int switch_config_gpio()
 **  Return value: if sucess, then returns IRQ_HANDLED
 **
 ************************************************************/
-static irqreturn_t lineout_irq_handler(int irq, void *dev_id)
-{
-	schedule_work(&lineout_work);
-	return IRQ_HANDLED;
-}
+// static irqreturn_t lineout_irq_handler(int irq, void *dev_id)
+// {
+// 	schedule_work(&lineout_work);
+// 	return IRQ_HANDLED;
+// }
 
 /**********************************************************
 **  Function: Headset jack-in detection interrupt handler
@@ -491,8 +491,8 @@ EXPORT_SYMBOL(hs_micbias_power);
 ************************************************************/
 static int __init headset_init(void)
 {
-	printk(KERN_INFO "%s+ #####\n", __func__);
 	int ret;
+	printk(KERN_INFO "%s+ #####\n", __func__);
 
 	printk("HEADSET: Headset detection init\n");
 
