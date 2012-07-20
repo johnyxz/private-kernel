@@ -106,13 +106,12 @@ static bool cpufreq_set_userspace_governor(void)
 	struct file *scaling_gov = NULL;
 	struct file *scaling_speed= NULL;
 	static char *governor = "userspace";
-	char old_governor[32]={0};
+//	char old_governor[32]={0};
 	mm_segment_t old_fs;
 	char    buf[128];
 	int i,j;
 	bool err=0;
 	loff_t offset = 0;
-	bool cpu0_set=0;
 	struct cpufreq_policy *policy =NULL;
 	printk("cpufreq_set_userspace_governor+\n");
 	/* change to KERNEL_DS address limit */

@@ -41,9 +41,10 @@
 #define FRONT_YUV_SENSOR_RST_GPIO	TEGRA_GPIO_PO0
 
 static struct regulator *grouper_1v8_ldo5;
+#ifdef CONFIG_VIDEO_OV2710
 static struct regulator *grouper_1v8_cam3;
 static struct regulator *grouper_vdd_cam3;
-
+#endif
 static const struct i2c_board_info cardhu_i2c1_board_info_al3010[] = {
 	{
 		I2C_BOARD_INFO("al3010",0x1C),
@@ -383,12 +384,6 @@ static struct nct1008_platform_data grouper_nct1008_pdata = {
 #ifndef CONFIG_TEGRA_INTERNAL_TSENSOR_EDP_SUPPORT
 	.probe_callback = nct1008_probe_callback,
 #endif
-};
-
-static struct i2c_board_info cardhu_i2c4_bq27541_board_info[] = {
-	{
-		I2C_BOARD_INFO("bq27541-battery", 0x55),
-	}
 };
 
 static struct i2c_board_info grouper_i2c4_nct1008_board_info[] = {
