@@ -31,7 +31,7 @@
 
 int g_is_call_mode;
 
-bool tegra_is_voice_call_active()
+bool tegra_is_voice_call_active(void)
 {
 	if (g_is_call_mode)
 		return true;
@@ -156,7 +156,9 @@ int tegra_asoc_utils_init(struct tegra_asoc_utils_data *data,
 			  struct device *dev)
 {
 	int ret;
+#if !defined(TEGRA30_I2S_MASTER_PLAYBACK)
 	int rate;
+#endif
 
 	data->dev = dev;
 
