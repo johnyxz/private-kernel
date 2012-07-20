@@ -10,7 +10,12 @@
  * published by the Free Software Foundation.
 */
 
-extern int idle2_lock_count;
-extern void s5p_set_idle2_lock(bool flag);
+#ifdef CONFIG_S5P_IDLE2
 extern int s5p_idle2_save(unsigned long *saveblk);
 extern void s5p_idle2_resume(void);
+extern void s5p_idle2(void);
+extern void idle2_enable(unsigned long delay);
+extern void idle2_disable(void);
+extern void idle2_external_active(void);
+extern void idle2_external_inactive(unsigned long delay);
+#endif

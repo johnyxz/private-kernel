@@ -27,10 +27,6 @@
 
 #include "power.h"
 
-#ifdef CONFIG_S5P_IDLE2
-#include <mach/cpuidle.h>
-#endif /* CONFIG_S5P_IDLE2 */
-
 const char *const pm_states[PM_SUSPEND_MAX] = {
 #ifdef CONFIG_EARLYSUSPEND
 	[PM_SUSPEND_ON]		= "on",
@@ -280,10 +276,6 @@ int enter_state(suspend_state_t state)
 	if (!mutex_trylock(&pm_mutex))
 		return -EBUSY;
 
-#ifdef CONFIG_S5P_IDLE2
-	printk(KERN_INFO "PM: Acquiring IDLE2 lock\n");
-	s5p_set_idle2_lock(true);
-#endif
 	printk(KERN_INFO "PM: Syncing filesystems ... ");
 	sys_sync();
 	printk("done.\n");
@@ -305,10 +297,6 @@ int enter_state(suspend_state_t state)
 	pr_debug("PM: Finishing wakeup.\n");
 	suspend_finish();
  Unlock:
-#ifdef CONFIG_S5P_IDLE2
-	printk(KERN_INFO "PM: Releasing IDLE2 lock\n");
-	s5p_set_idle2_lock(false);
-#endif
 	mutex_unlock(&pm_mutex);
 	return error;
 }

@@ -19,10 +19,6 @@
 #include <media/s5k4ecgx.h>
 #include <linux/videodev2_samsung.h>
 
-#ifdef CONFIG_S5P_IDLE2
-#include <mach/cpuidle.h>
-#endif /* CONFIG_S5P_IDLE2 */
-
 #ifdef CONFIG_VIDEO_S5K4ECGX_V_1_0
 #include "s5k4ecgx_regs_1_0.h"
 #define S5K4ECGX_VERSION_1_0	0x00
@@ -1646,9 +1642,6 @@ static void s5k4ecgx_enable_torch(struct v4l2_subdev *sd)
 				&state->regs->flash_start, 1, 0);
 	state->torch_on = true;
 	pdata->torch_onoff(1);
-#ifdef CONFIG_S5P_IDLE2
-	s5p_set_idle2_lock(true);
-#endif
 }
 
 static void s5k4ecgx_disable_torch(struct v4l2_subdev *sd)
@@ -1663,9 +1656,6 @@ static void s5k4ecgx_disable_torch(struct v4l2_subdev *sd)
 		pdata->torch_onoff(0);
 		s5k4ecgx_set_from_table(sd, "torch end",
 					&state->regs->flash_end, 1, 0);
-#ifdef CONFIG_S5P_IDLE2
-		s5p_set_idle2_lock(false);
-#endif
 	}
 }
 static int s5k4ecgx_set_flash_mode(struct v4l2_subdev *sd, int value)

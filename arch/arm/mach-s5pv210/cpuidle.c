@@ -14,7 +14,6 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/platform_device.h>
-#include <linux/cpuidle.h>
 #include <linux/io.h>
 #include <asm/proc-fns.h>
 #include <asm/cacheflush.h>
@@ -24,17 +23,26 @@
 #include <mach/regs-irq.h>
 #include <mach/regs-clock.h>
 #include <plat/pm.h>
-#ifdef CONFIG_S5P_IDLE2
-#include <plat/regs-serial.h>
-#include <plat/regs-otg.h>
-#include <asm/hardware/pl330.h>
-#endif
-#include <mach/cpuidle.h>
 #include <plat/devs.h>
+#include <linux/cpuidle.h>
 
-#include <mach/dma.h>
+#ifdef CONFIG_S5P_IDLE2
+#include <mach/idle2.h>
+#include <linux/suspend.h>
+#include <linux/workqueue.h>
+#endif /* CONFIG_S5P_IDLE2 */
 
-#define S5PC110_MAX_STATES	1
+
+#ifdef CONFIG_S5P_IDLE2
+static bool idle2_disabled __read_mostly = false;
+static bool idle2_disabled_by_suspend = false;
+static bool work_initialised = false;
+static bool idle2_requested;
+static bool external_active;
+static bool inactive_pending;
+static bool enable_pending;
+#endif /* CONFIG_S5P_IDLE2 */
+
 
 inline static void s5p_enter_idle(void)
 {
@@ -53,7 +61,7 @@ inline static void s5p_enter_idle(void)
 }
 
 /* Actual code that puts the SoC in different idle states */
-inline static int s5p_enter_idle_normal(struct cpuidle_device *dev,
+inline static int s5p_enter_idle_normal(struct cpuidle_device *device,
 				struct cpuidle_state *state)
 {
 	struct timeval before, after;
@@ -79,321 +87,20 @@ static struct cpuidle_driver s5p_idle_driver = {
 };
 
 #ifdef CONFIG_S5P_IDLE2
-extern void s5p_idle2(void);
-
-/* For saving & restoring VIC register before entering
- * idle2 mode
- **/
-static unsigned long vic_regs[4];
-static unsigned long *regs_save;
-static dma_addr_t phy_regs_save;
-
-#define MAX_CHK_DEV	0xf
-
-/* Specific device list for checking before entering
- * idle2 mode
- **/
-struct check_device_op {
-	void __iomem		*base;
-	struct platform_device	*pdev;
-};
-
-/* Array of checking devices list */
-static struct check_device_op chk_dev_op[] = {
-#if defined(CONFIG_S3C_DEV_HSMMC)
-	{.base = 0, .pdev = &s3c_device_hsmmc0},
-#endif
-#if defined(CONFIG_S3C_DEV_HSMMC1)
-	{.base = 0, .pdev = &s3c_device_hsmmc1},
-#endif
-#if defined(CONFIG_S3C_DEV_HSMMC2)
-	{.base = 0, .pdev = &s3c_device_hsmmc2},
-#endif
-#if defined(CONFIG_S3C_DEV_HSMMC3)
-	{.base = 0, .pdev = &s3c_device_hsmmc3},
-#endif
-	{.base = 0, .pdev = &s5p_device_onenand},
-	{.base = 0, .pdev = NULL},
-};
-
-/* Check 3D */
-inline static bool check_g3d_op(void)
-{
-	unsigned long val;
-
-	val    = __raw_readl(S5P_CLKGATE_IP0);
-
-	if(val & S5P_CLKGATE_IP0_G3D) {
-#ifdef CONFIG_S5P_IDLE2_DEBUG
-		printk(KERN_INFO "%s: returns true\n", __func__);
-#endif
-		return true;
-	}
-	else
-		return false;
-}
-
-#define S3C_HSMMC_PRNSTS	(0x24)
-#define S3C_HSMMC_CLKCON	(0x2c)
-#define S3C_HSMMC_CMD_INHIBIT	0x00000001
-#define S3C_HSMMC_DATA_INHIBIT	0x00000002
-#define S3C_HSMMC_CLOCK_CARD_EN	0x0004
-
-
-/* If SD/MMC interface is working: return = true */
-inline static bool check_sdmmc_op(unsigned int ch)
-{
-	unsigned int reg1, reg2;
-	void __iomem *base_addr;
-
-	if (unlikely(ch > 2)) {
-		printk(KERN_ERR "Invalid ch[%d] for SD/MMC \n", ch);
-		return false;
-	}
-
-	base_addr = chk_dev_op[ch].base;
-	/* Check CMDINHDAT[1] and CMDINHCMD [0] */
-	reg1 = readl(base_addr + S3C_HSMMC_PRNSTS);
-	/* Check CLKCON [2]: ENSDCLK */
-	reg2 = readl(base_addr + S3C_HSMMC_CLKCON);
-
-	if ((reg1 & (S3C_HSMMC_CMD_INHIBIT | S3C_HSMMC_DATA_INHIBIT)) ||
-			(reg2 & (S3C_HSMMC_CLOCK_CARD_EN))) {
-#ifdef CONFIG_S5P_IDLE2_DEBUG
-		printk(KERN_INFO "%s: returns true\n", __func__);
-#endif
-		return true;
-	} else {
-		return false;
-	}
-}
-
-/* Check all sdmmc controller */
-inline static bool loop_sdmmc_check(void)
-{
-	unsigned int iter;
-
-	for (iter = 0; iter < 3; iter++) {
-		if (check_sdmmc_op(iter))
-			return true;
-	}
-	return false;
-}
-
-/* Check onenand is working or not */
-
-/* ONENAND_IF_STATUS(0xB060010C)
- * ORWB[0] = 	1b : busy
- * 		0b : Not busy
- **/
-inline static bool check_onenand_op(void)
-{
-	unsigned int val;
-	void __iomem *base_addr;
-
-	base_addr = chk_dev_op[3].base;
-
-	val = __raw_readl(base_addr + 0x0000010c);
-
-	if (val & 0x1) {
-#ifdef CONFIG_S5P_IDLE2_DEBUG
-		printk(KERN_INFO "%s: returns true\n", __func__);
-#endif
-		return true;
-	}
-	return false;
-}
-
-inline static bool check_dma_op(void)
-{
-	unsigned long val;
-
-	val = __raw_readl(S5P_CLKGATE_IP0);
-	if (val & (S5P_CLKGATE_IP0_MDMA | S5P_CLKGATE_IP0_PDMA0
-					| S5P_CLKGATE_IP0_PDMA1)) {
-#ifdef CONFIG_S5P_IDLE2_DEBUG
-		printk(KERN_INFO "%s: returns true\n", __func__);
-#endif
-		return true;
-	}
-	return false;
-}
-
-extern void i2sdma_getpos(dma_addr_t *src);
-inline static bool check_idmapos(void)
-{
-	dma_addr_t src;
-	i2sdma_getpos(&src);
-	src = src & 0x3FFF;
-	src = 0x4000 - src;
-	if(src < 0x150){
-#ifdef CONFIG_S5P_IDLE2_DEBUG
-		printk(KERN_INFO "%s: returns true\n", __func__);
-#endif
-		return true;
-	}
-	else
-		return false;
-}
-
-extern unsigned int get_rtc_cnt(void);
-inline static bool check_rtcint(void)
-{
-	unsigned int current_cnt = get_rtc_cnt();
-	if(current_cnt < 0x40){
-#ifdef CONFIG_S5P_IDLE2_DEBUG
-		printk(KERN_INFO "%s: returns true\n", __func__);
-#endif
-		return true;
-	}
-	else
-		return false;
-}
-
-inline static void s5p_enter_idle2(void)
-{
-	unsigned long tmp;
-	unsigned long save_eint_mask;
-
-	/* store the physical address of the register recovery block */
-	__raw_writel(phy_regs_save, S5P_INFORM2);
-
-	/* ensure at least INFORM0 has the resume address */
-	__raw_writel(virt_to_phys(s5p_idle2_resume), S5P_INFORM0);
-
-	/* Save current VIC_INT_ENABLE register*/
-	vic_regs[0] = __raw_readl(S5P_VIC0REG(VIC_INT_ENABLE));
-	vic_regs[1] = __raw_readl(S5P_VIC1REG(VIC_INT_ENABLE));
-	vic_regs[2] = __raw_readl(S5P_VIC2REG(VIC_INT_ENABLE));
-	vic_regs[3] = __raw_readl(S5P_VIC3REG(VIC_INT_ENABLE));
-
-	/* Disable all interrupt through VIC */
-	__raw_writel(0xffffffff, S5P_VIC0REG(VIC_INT_ENABLE_CLEAR));
-	__raw_writel(0xffffffff, S5P_VIC1REG(VIC_INT_ENABLE_CLEAR));
-	__raw_writel(0xffffffff, S5P_VIC2REG(VIC_INT_ENABLE_CLEAR));
-	__raw_writel(0xffffffff, S5P_VIC3REG(VIC_INT_ENABLE_CLEAR));
-
-        save_eint_mask = __raw_readl(S5P_EINT_WAKEUP_MASK);
-        __raw_writel(0xFFFFFFFF, S5P_EINT_WAKEUP_MASK);
-
-	/* Wakeup source configuration for idle2 */
-	tmp = __raw_readl(S5P_WAKEUP_MASK);
-
-	tmp |= 0xffff;
-        // Key interrupt mask idma & RTC tic only
-        tmp &= ~((1<<2) | (1<<13));
-
-	__raw_writel(tmp, S5P_WAKEUP_MASK);
-
-	/* Clear wakeup status register */
-	tmp = __raw_readl(S5P_WAKEUP_STAT);
-	__raw_writel(tmp, S5P_WAKEUP_STAT);
-
-	/*
-	 * Configure for DEEP-IDLE TOP ON mode
-	 * IDLE config register set
-	 * TOP Memory retention on
-	 * TOP Memory LP mode off
-	 * ARM_L2_Cacheret on
-	 */
-	tmp = __raw_readl(S5P_IDLE_CFG);
-	tmp &= ~(0x3f << 26);
-	tmp |= ((2<<30) | (2<<28) | (1<<26) | (1<<0));
-	__raw_writel(tmp, S5P_IDLE_CFG);
-
-	/* Power mode Config setting */
-	tmp = __raw_readl(S5P_PWR_CFG);
-	tmp &= S5P_CFG_WFI_CLEAN;
-	tmp |= S5P_CFG_WFI_IDLE;
-	__raw_writel(tmp, S5P_PWR_CFG);
-
-	/* To check VIC Status register before enter idle2 mode */
-	if (__raw_readl(S5P_VIC2REG(VIC_RAW_STATUS)) & 0x10000) {
-		printk(KERN_WARNING "%s: VIC interrupt active, bailing!\n", __func__);
-		goto skipped_idle2;
-	}
-
-	/* SYSCON_INT_DISABLE */
-	tmp = __raw_readl(S5P_OTHERS);
-	tmp |= S5P_OTHER_SYSC_INTOFF;
-	__raw_writel(tmp, S5P_OTHERS);
-
-	/* Entering idle2 mode with WFI instruction */
-	if (s5p_idle2_save(regs_save) == 0) {
-#ifdef CONFIG_S5P_IDLE2_DEBUG
-		printk(KERN_INFO "*** Entering IDLE2 mode\n");
-#endif
-		s5p_idle2();
-	}
-
-skipped_idle2:
-	__raw_writel(save_eint_mask, S5P_EINT_WAKEUP_MASK);
-
-	tmp = __raw_readl(S5P_IDLE_CFG);
-	tmp &= ~((3<<30)|(3<<28)|(3<<26)|(1<<0));
-	tmp |= ((2<<30)|(2<<28));
-	__raw_writel(tmp, S5P_IDLE_CFG);
-
-	/* Power mode Config setting */
-	tmp = __raw_readl(S5P_PWR_CFG);
-	tmp &= S5P_CFG_WFI_CLEAN;
-	__raw_writel(tmp, S5P_PWR_CFG);
-
-	__raw_writel(vic_regs[0], S5P_VIC0REG(VIC_INT_ENABLE));
-	__raw_writel(vic_regs[1], S5P_VIC1REG(VIC_INT_ENABLE));
-	__raw_writel(vic_regs[2], S5P_VIC2REG(VIC_INT_ENABLE));
-	__raw_writel(vic_regs[3], S5P_VIC3REG(VIC_INT_ENABLE));
-}
-
-static spinlock_t idle2_lock;
-int idle2_lock_count = 1;
-/*
- * flag = false : allow to enter idle2
- * flag = true : don't allow to enter idle2
- * Start with 1 lock, because early suspend will remove that
- * the first time it is invoked
- */
-void s5p_set_idle2_lock(bool flag)
-{
-	spin_lock(&idle2_lock);
-
-	if (flag)
-		idle2_lock_count++;
-	else
-		idle2_lock_count--;
-
-	if (idle2_lock_count < 0)
-		idle2_lock_count = 0;
-	printk(KERN_INFO "%s: %d locks enabled\n", __func__, idle2_lock_count);
-
-	spin_unlock(&idle2_lock);
-}
-EXPORT_SYMBOL(s5p_set_idle2_lock);
-
-inline int s5p_get_idle2_lock(void)
-{
-	return idle2_lock_count;
-}
-
-inline static bool s5p_idle_bm_check(void)
-{
-	if (likely(s5p_get_idle2_lock() == 0)) {
-		if (unlikely(loop_sdmmc_check() || check_onenand_op()
-			|| check_dma_op() || check_g3d_op()
-			|| check_idmapos() || check_rtcint()))
-			return true;
-		else
-			return false;
-	}
-	return true;
-}
-
 /* Actual code that puts the SoC in different idle states */
-inline static int s5p_enter_idle_idle2(struct cpuidle_device *dev,
+inline static int s5p_enter_idle_idle2(struct cpuidle_device *device,
 				struct cpuidle_state *state)
 {
 	struct timeval before, after;
 	int idle_time;
+
+	if (enter_idle2_check()) {
+#ifdef CONFIG_S5P_IDLE2_DEBUG
+		printk("%s: Falling back to IDLE state\n", __func__);
+#endif
+		s5p_enter_idle_normal(device, state);
+		return 0;
+	}
 
 	local_irq_disable();
 	do_gettimeofday(&before);
@@ -406,44 +113,167 @@ inline static int s5p_enter_idle_idle2(struct cpuidle_device *dev,
 	return idle_time;
 }
 
-inline static int s5p_enter_idle_bm(struct cpuidle_device *dev,
+static void idle2_requested_fn(bool flag)
+{
+	if (flag)
+		idle2_requested = true;
+	else
+		idle2_requested = false;
+	printk(KERN_INFO "idle2_requested: %d\n", idle2_requested);
+}
+
+static void external_active_fn(bool flag)
+{
+	if (flag)
+		external_active = true;
+	else
+		external_active = false;
+	printk(KERN_INFO "external_active: %d\n", external_active);
+}
+
+inline static int s5p_enter_idle_deep(struct cpuidle_device *device,
 				struct cpuidle_state *state)
 {
-	if (unlikely(s5p_idle_bm_check())) {
-#ifdef CONFIG_S5P_IDLE2_DEBUG
-		printk("%s: s5p_idle_bm_check() returned true - Entering normal IDLE\n", __func__);
-#endif
-		return s5p_enter_idle_normal(dev, state);
-	}
-	else
-		return s5p_enter_idle_idle2(dev, state);
+	if (unlikely(idle2_disabled || idle2_disabled_by_suspend))
+		return s5p_enter_idle_normal(device, state);
+	if (likely(idle2_requested && !external_active))
+		return s5p_enter_idle_idle2(device, state);
+	return s5p_enter_idle_normal(device, state);
 }
+
+static struct workqueue_struct *idle2_wq;
+struct work_struct idle2_disable_work;
+struct delayed_work idle2_enable_work;
+struct work_struct idle2_external_active_work;
+struct delayed_work idle2_external_inactive_work;
+
+static void idle2_enable_work_fn(struct work_struct *work)
+{
+	idle2_requested_fn(true);
+}
+
+static void idle2_disable_work_fn(struct work_struct *work)
+{
+	cancel_delayed_work_sync(&idle2_enable_work);
+	idle2_requested_fn(false);
+}
+
+static void idle2_external_active_work_fn(struct work_struct *work)
+{
+	cancel_delayed_work_sync(&idle2_external_inactive_work);
+	external_active_fn(true);
+}
+
+static void idle2_external_inactive_work_fn(struct work_struct *work)
+{
+	external_active_fn(false);
+}
+
+void idle2_enable(unsigned long delay)
+{
+	if (work_initialised) {
+		enable_pending = true;
+		queue_delayed_work(idle2_wq, &idle2_enable_work, delay);
+	}
+}
+EXPORT_SYMBOL(idle2_enable);
+
+void idle2_disable(void)
+{
+	if (work_initialised && (idle2_requested || enable_pending)) {
+		queue_work(idle2_wq, &idle2_disable_work);
+		enable_pending = false;
+	}
+}
+EXPORT_SYMBOL(idle2_disable);
+
+void idle2_external_active(void)
+{
+	if (work_initialised && (!external_active || inactive_pending)) {
+		queue_work(idle2_wq, &idle2_external_active_work);
+		inactive_pending = false;
+	}
+}
+EXPORT_SYMBOL(idle2_external_active);
+
+void idle2_external_inactive(unsigned long delay)
+{
+	if (work_initialised && external_active) {
+		inactive_pending = true;
+		queue_delayed_work(idle2_wq, &idle2_external_inactive_work, delay);
+	}
+}
+EXPORT_SYMBOL(idle2_external_inactive);
+
+
+static int idle2_disabled_set(const char *arg, const struct kernel_param *kp)
+{
+	int ret;
+	printk(KERN_INFO "%s: %s\n", __func__, arg);
+	return ret = param_set_bool(arg, kp);
+}
+
+static int idle2_disabled_get(char *buffer, const struct kernel_param *kp)
+{
+	return param_get_bool(buffer, kp);
+}
+
+static struct kernel_param_ops idle2_disabled_ops = {
+	.set = idle2_disabled_set,
+	.get = idle2_disabled_get,
+};
+module_param_cb(idle2_disabled, &idle2_disabled_ops, &idle2_disabled, 0644);
+
+static int s5p_idle_prepare(struct cpuidle_device *device)
+{
+	if (!idle2_disabled && !external_active && idle2_requested)
+		device->states[1].flags &= ~CPUIDLE_FLAG_IGNORE;
+	else
+		device->states[1].flags |= CPUIDLE_FLAG_IGNORE;
+
+	return 0;
+}
+
+static int idle2_pm_notify(struct notifier_block *nb,
+	unsigned long event, void *dummy)
+{
+	if (event == PM_SUSPEND_PREPARE) {
+		idle2_disabled_by_suspend = true;
+		printk(KERN_INFO "%s: IDLE2 disabled\n", __func__);
+	}
+	else if (event == PM_POST_SUSPEND) {
+		idle2_disabled_by_suspend = false;
+		printk(KERN_INFO "%s: IDLE2 enabled\n", __func__);
+	}
+	return NOTIFY_OK;
+}
+
+static struct notifier_block idle2_pm_notifier = {
+	.notifier_call = idle2_pm_notify,
+};
 #endif /* CONFIG_S5P_IDLE2 */
+
 
 /* Initialize CPU idle by registering the idle states */
 static int s5p_init_cpuidle(void)
 {
 	struct cpuidle_device *device;
+
 #ifdef CONFIG_S5P_IDLE2
-	struct platform_device *pdev;
-	struct resource *res;
-	int i = 0;
+	idle2_wq = create_singlethread_workqueue("idle2_workqueue");
+	BUG_ON(!idle2_wq);
+	INIT_WORK(&idle2_disable_work, idle2_disable_work_fn);
+	INIT_DELAYED_WORK(&idle2_enable_work, idle2_enable_work_fn);
+	INIT_WORK(&idle2_external_active_work, idle2_external_active_work_fn);
+	INIT_DELAYED_WORK(&idle2_external_inactive_work, idle2_external_inactive_work_fn);
+	work_initialised = true;
 #endif /* CONFIG_S5P_IDLE2 */
 
 	cpuidle_register_driver(&s5p_idle_driver);
 
 	device = &per_cpu(s5p_cpuidle_device, smp_processor_id());
-	device->state_count = 1;
-#ifdef CONFIG_S5P_IDLE2
-	/* Wait for interrupt state */
-	device->states[0].enter = s5p_enter_idle_bm;
-	device->states[0].exit_latency = 1;	/* uS */
-	device->states[0].target_residency = 5000;
-	device->states[0].flags = CPUIDLE_FLAG_TIME_VALID |
-					CPUIDLE_FLAG_CHECK_BM;
-	strcpy(device->states[0].name, "IDLE2");
-	strcpy(device->states[0].desc, "DEEP-IDLE TOP ON - WFI");
-#else
+	device->state_count = 0;
+
 	/* Wait for interrupt state */
 	device->states[0].enter = s5p_enter_idle_normal;
 	device->states[0].exit_latency = 1;	/* uS */
@@ -451,7 +281,22 @@ static int s5p_init_cpuidle(void)
 	device->states[0].flags = CPUIDLE_FLAG_TIME_VALID;
 	strcpy(device->states[0].name, "IDLE");
 	strcpy(device->states[0].desc, "ARM clock gating - WFI");
-#endif /* CONFIG_S5P_IDLE2 */
+	device->state_count++;
+	
+#ifdef CONFIG_S5P_IDLE2
+	/* Deep-Idle top OFF Wait for interrupt state */
+	device->states[1].enter = s5p_enter_idle_deep;
+	device->states[1].exit_latency = 300;	/* uS */
+	device->states[1].target_residency = 5000;
+	device->states[1].flags = CPUIDLE_FLAG_TIME_VALID |
+					CPUIDLE_FLAG_CHECK_BM;
+	strcpy(device->states[1].name, "IDLE2");
+	strcpy(device->states[1].desc, "ARM/TOP/SUB Power gating - WFI");
+	device->state_count++;
+
+	device->prepare = s5p_idle_prepare;
+#endif
+
 	if (cpuidle_register_device(device)) {
 		printk(KERN_ERR "s5p_init_cpuidle: Failed registering\n");
 		BUG();
@@ -464,38 +309,14 @@ static int s5p_init_cpuidle(void)
 		BUG();
 		return -ENOMEM;
 	}
-	printk(KERN_INFO "cpuidle: IDLE2 support enabled - version 0.140 by <willtisdale@gmail.com>\n");
-	printk(KERN_INFO "cpuidle: phy_regs_save:0x%x\n", phy_regs_save);
+	printk(KERN_INFO "cpuidle: IDLE2 support enabled - version 0.200 by <willtisdale@gmail.com>\n");
 
-	spin_lock_init(&idle2_lock);
+	register_pm_notifier(&idle2_pm_notifier);
 
-	/* Allocate memory region to access IP's directly */
-	for (i = 0 ; i < MAX_CHK_DEV ; i++) {
-
-		pdev = chk_dev_op[i].pdev;
-
-		if (pdev == NULL)
-			break;
-
-		res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-		if (!res) {
-			printk(KERN_ERR "failed to get io memory region\n");
-			return -EINVAL;
-		}
-		/* ioremap for register block */
-		if(pdev == &s5p_device_onenand)
-			chk_dev_op[i].base = ioremap(res->start+0x00600000, 4096);
-		else
-			chk_dev_op[i].base = ioremap(res->start, 4096);
-
-		if (!chk_dev_op[i].base) {
-			printk(KERN_ERR "failed to remap io region\n");
-			return -EINVAL;
-		}
-	}
-#endif /* CONFIG_S5P_IDLE2 */
-
+	return s5p_init_remap();
+#else /* CONFIG_S5P_IDLE2 */
 	return 0;
+#endif
 }
 
 device_initcall(s5p_init_cpuidle);
