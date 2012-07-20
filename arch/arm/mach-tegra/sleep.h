@@ -160,8 +160,8 @@ int tegra2_sleep_core_finish(unsigned long int);
 void tegra2_hotplug_shutdown(void);
 void tegra2_sleep_wfi(unsigned long v2p);
 #else
-extern void tegra3_iram_start;
-extern void tegra3_iram_end;
+extern u8 tegra3_iram_start;
+extern u8 tegra3_iram_end;
 int tegra3_sleep_core_finish(unsigned long int);
 int tegra3_sleep_cpu_secondary_finish(unsigned long int);
 void tegra3_hotplug_shutdown(void);
