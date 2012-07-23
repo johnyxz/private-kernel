@@ -35,9 +35,13 @@
 
 #define SEQUENCE_WAIT_MS  SENSOR_WAIT_MS
 #define SEQUENCE_END      SENSOR_TABLE_END
+#undef SENSOR_BYTE_WRITE
 #define SENSOR_BYTE_WRITE    (SEQUENCE_END+1)
+#undef SENSOR_WORD_WRITE
 #define SENSOR_WORD_WRITE    (SEQUENCE_END+2)
+#undef SENSOR_MASK_BYTE_WRITE
 #define SENSOR_MASK_BYTE_WRITE  (SEQUENCE_END+3)
+#undef SENSOR_MASK_WORD_WRITE
 #define SENSOR_MASK_WORD_WRITE  (SEQUENCE_END+4)
 #define SENSOR_BYTE_READ  (SEQUENCE_END+5)
 #define SENSOR_WORD_READ  (SEQUENCE_END+6)
@@ -48,7 +52,7 @@ static int g_under_the_table = 0;
 struct sensor_reg_ex {
   u16 cmd;
 	u16 addr;
-	u16 val;
+	u32 val;
 };
 
 struct sensor_info {
@@ -741,7 +745,7 @@ enum {
 	SENSOR_MODE_1280x960,
 };
 
-static int sensor_read_reg(struct i2c_client *client, u16 addr, u16 *val)
+static int sensor_read_reg(struct i2c_client *client, u16 addr, u32 *val)
 {
 	int err;
 	struct i2c_msg msg[2];
@@ -776,7 +780,7 @@ static int sensor_read_reg(struct i2c_client *client, u16 addr, u16 *val)
 	return 0;
 }
 
-static int sensor_read_reg_word(struct i2c_client *client, u16 addr, u16 *val)
+static int sensor_read_reg_word(struct i2c_client *client, u16 addr, u32 *val)
 {
 	int err;
 	struct i2c_msg msg[2];
@@ -846,7 +850,7 @@ static int sensor_read_reg_dword(struct i2c_client *client, u16 addr, u32 *val)
 	return 0;
 }
 
-static int sensor_write_reg(struct i2c_client *client, u16 addr, u16 val)
+static int sensor_write_reg(struct i2c_client *client, u16 addr, u32 val)
 {
 	int err;
 	struct i2c_msg msg;
@@ -878,7 +882,7 @@ static int sensor_write_reg(struct i2c_client *client, u16 addr, u16 val)
 
 	return err;
 }
-static int sensor_write_reg_word(struct i2c_client *client, u16 addr, u16 val)
+static int sensor_write_reg_word(struct i2c_client *client, u16 addr, u32 val)
 {
 	int err;
 	struct i2c_msg msg;
@@ -954,8 +958,8 @@ static int sensor_write_table_ex(struct i2c_client *client,
 {
 	int err;
 	const struct sensor_reg_ex *next;
-	u16 val;
-  int i=0;
+	u32 val;
+//  int i=0;
 
 	pr_info("yuv %s\n",__func__);
 
@@ -1002,10 +1006,10 @@ static ssize_t dbg_mi1040_chip_id_read(struct file *file, char __user *buf, size
 	int dlen = sizeof(debug_buf);
 	char *bp = debug_buf;
 
-	u16 chip_id = 0x0;
+	u32 chip_id = 0x0;
 	int err = 0;
 
-	printk("%s: buf=%p, count=%d, ppos=%p; *ppos= %d\n", __FUNCTION__, buf, count, ppos, *ppos);
+	printk("%s: buf=%p, count=%d, ppos=%p; *ppos= %d\n", __FUNCTION__, buf, count, ppos, (int)*ppos);
 
 	if (*ppos)
 		return 0;	/* the end */
@@ -1062,7 +1066,7 @@ static ssize_t dbg_get_mi1040_reg_write(struct file *file, char __user *buf, siz
 	int cnt, byte_num = 0;
 	char ofst_str[7];
 	unsigned int ofst = 0;
-	unsigned int val = 0;
+	u32 val = 0;
 
 	printk("%s: buf=%p, count=%d, ppos=%p\n", __FUNCTION__, buf, count, ppos);
 	if (count > sizeof(debug_buf))
@@ -1125,7 +1129,7 @@ static ssize_t dbg_get_mi1040_reg_write(struct file *file, char __user *buf, siz
 
 static const struct file_operations dbg_get_mi1040_reg_fops = {
 	.open		= dbg_get_mi1040_reg_open,
-	.write		= dbg_get_mi1040_reg_write,
+	.write		= (void *)dbg_get_mi1040_reg_write,
 };
 
 /* --- set_mi1040_reg --- */
@@ -1228,11 +1232,12 @@ static ssize_t dbg_set_mi1040_reg_write(struct file *file, char __user *buf, siz
 
 static const struct file_operations dbg_set_mi1040_reg_fops = {
 	.open		= dbg_set_mi1040_reg_open,
-	.write		= dbg_set_mi1040_reg_write,
+	.write		= (void *)dbg_set_mi1040_reg_write,
 };
 /* debugfs- */
 
-static int get_sensor_current_width(struct i2c_client *client, u16 *val)
+#if 0
+static int get_sensor_current_width(struct i2c_client *client, u32 *val)
 {
         int err;
 
@@ -1247,6 +1252,7 @@ static int get_sensor_current_width(struct i2c_client *client, u16 *val)
 
         return 0;
 }
+#endif
 
 static int sensor_set_mode(struct sensor_info *info, struct sensor_mode *mode)
 {
@@ -1410,7 +1416,7 @@ static long sensor_ioctl(struct file *file,
 	case SENSOR_CUSTOM_IOCTL_GET_EV:
 	{
 		short ev;
-		u16 val;
+		u32 val;
 
 		sensor_write_reg_word(info->i2c_client, 0x098E, 0xC874);
 		err = sensor_read_reg(info->i2c_client, 0xC87A, &val);
@@ -1432,7 +1438,7 @@ static long sensor_ioctl(struct file *file,
 			ev=1;
 		else if (val > 0x42)
 			ev=2;
-		if (copy_to_user((const void __user *)arg, &ev, sizeof(short))) {
+		if (copy_to_user((void __user *)arg, &ev, sizeof(short))) {
 			return -EFAULT;
 		}
 		if (err)
@@ -1444,7 +1450,7 @@ static long sensor_ioctl(struct file *file,
 	case SENSOR_CUSTOM_IOCTL_GET_AE_LOCK:
 	{
 		u32 aelock = 0;
-		u16 val;
+		u32 val;
 
 		sensor_write_reg_word(info->i2c_client, 0x098E, 0xCC00);
 		err = sensor_read_reg(info->i2c_client, 0xCC00, &val);
@@ -1465,7 +1471,7 @@ static long sensor_ioctl(struct file *file,
 		}else
 			printk("AELOCK Unknown State: 0x%x???\n", val);
 
-		if (copy_to_user((const void __user *)arg, &aelock, sizeof(u32)))
+		if (copy_to_user((void __user *)arg, &aelock, sizeof(u32)))
 		{
 			return -EFAULT;
 		}
@@ -1502,7 +1508,7 @@ static long sensor_ioctl(struct file *file,
 	case SENSOR_CUSTOM_IOCTL_GET_AWB_LOCK:
 	{
 		u32 awblock = 0;
-		u16 val;
+		u32 val;
 
 		sensor_write_reg_word(info->i2c_client, 0x098E, 0xCC01);
 		err = sensor_read_reg(info->i2c_client, 0xCC01, &val);
@@ -1523,7 +1529,7 @@ static long sensor_ioctl(struct file *file,
 		}else
 			printk("AWBLOCK Unknown State???\n");
 
-		if (copy_to_user((const void __user *)arg, &awblock, sizeof(u32)))
+		if (copy_to_user((void __user *)arg, &awblock, sizeof(u32)))
 		{
 			return -EFAULT;
 		}
