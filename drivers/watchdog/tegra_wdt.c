@@ -128,6 +128,7 @@ static irqreturn_t tegra_wdt_interrupt(int irq, void *dev_id)
 #define WDT_UNLOCK			(0xC)
  #define WDT_UNLOCK_PATTERN		(0xC45A << 0)
 
+#if 0
 static void tegra_wdt_set_timeout(struct tegra_wdt *wdt, int sec)
 {
 	u32 ptv;
@@ -144,6 +145,7 @@ static void tegra_wdt_set_timeout(struct tegra_wdt *wdt, int sec)
 		writel(ptv, wdt->wdt_timer + TIMER_PTV);
 	}
 }
+#endif
 
 static inline void tegra_wdt_ping(struct tegra_wdt *wdt)
 {
