@@ -105,8 +105,8 @@
 
 /* Functions declaration */
 static int smb347_configure_charger(struct i2c_client *client, int value);
-static int smb347_configure_interrupts(struct i2c_client *client);
-extern unsigned int grouper_query_pcba_revision();
+//static int smb347_configure_interrupts(struct i2c_client *client);
+extern unsigned int grouper_query_pcba_revision(void);
 extern int battery_callback(unsigned usb_cable_state);
 
 static ssize_t smb347_reg_show(struct device *dev, struct device_attribute *attr, char *buf);
@@ -573,6 +573,7 @@ error:
 	return ret;
 }
 
+#if 0
 static int smb347_configure_interrupts(struct i2c_client *client)
 {
 	int ret = 0;
@@ -609,6 +610,7 @@ static int smb347_configure_interrupts(struct i2c_client *client)
 error:
 	return ret;
 }
+#endif
 
 static void smb347_otg_status(enum usb_otg_state to, enum usb_otg_state from, void *data)
 {
@@ -827,8 +829,8 @@ static int __devinit smb347_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
 	struct i2c_adapter *adapter = to_i2c_adapter(client->dev.parent);
-	int ret, irq_num, i;
-	uint8_t val, buf[15];
+	int ret;
+//	uint8_t val, buf[15];
 
 	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE))
 		return -EIO;
@@ -884,7 +886,7 @@ static int __devexit smb347_remove(struct i2c_client *client)
 	return 0;
 }
 
-static int smb347_suspend(struct i2c_client *client)
+static int smb347_suspend(struct i2c_client *client, pm_message_t mesg)
 {
 	charger->suspend_ongoing = 1;
 	//cancel_delayed_work_sync(&charger->regs_dump_work);
@@ -907,7 +909,7 @@ static int smb347_resume(struct i2c_client *client)
 }
 
 
-static int smb347_shutdown(struct i2c_client *client)
+static void smb347_shutdown(struct i2c_client *client)
 {
 	int ret;
 	printk("smb347_shutdown+\n");
@@ -925,7 +927,7 @@ static int smb347_shutdown(struct i2c_client *client)
 			"otg..\n", __func__);
 
 	printk("smb347_shutdown-\n");
-	return 0;
+	return;
 }
 
 static const struct i2c_device_id smb347_id[] = {
