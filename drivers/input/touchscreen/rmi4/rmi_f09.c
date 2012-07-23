@@ -88,18 +88,18 @@ static ssize_t rmi_f09_HostTestEn_store(struct device *dev,
 				      struct device_attribute *attr,
 					char *buf, size_t count);
 
-static ssize_t rmi_f09_InternalLimits_show(struct device *dev,
-				      struct device_attribute *attr, char *buf);
+//static ssize_t rmi_f09_InternalLimits_show(struct device *dev,
+//				      struct device_attribute *attr, char *buf);
 
 static ssize_t rmi_f09_Result_Register_Count_show(struct device *dev,
 				      struct device_attribute *attr, char *buf);
 
-static ssize_t rmi_f09_Overall_BIST_Result_show(struct device *dev,
-				      struct device_attribute *attr, char *buf);
+//static ssize_t rmi_f09_Overall_BIST_Result_show(struct device *dev,
+//				      struct device_attribute *attr, char *buf);
 
-static ssize_t rmi_f09_Overall_BIST_Result_store(struct device *dev,
-				       struct device_attribute *attr,
-				       const char *buf, size_t count);
+//static ssize_t rmi_f09_Overall_BIST_Result_store(struct device *dev,
+//				       struct device_attribute *attr,
+//				       const char *buf, size_t count);
 
 static struct device_attribute attrs[] = {
 	__ATTR(Limit_Register_Count, RMI_RO_ATTR,
@@ -119,7 +119,7 @@ static int rmi_f09_init(struct rmi_function_container *fc)
 	struct rmi_fn_09_data  *f09;
 	u8 query_base_addr;
 	int rc;
-	int i;
+//	int i;
 	int attr_count = 0;
 	int retval = 0;
 
@@ -171,8 +171,8 @@ static void rmi_f09_remove(struct rmi_function_container *fc)
 {
 	struct rmi_fn_09_data *data = fc->data;
 	if (data) {
-		kfree(data->query.Limit_Register_Count);
-		kfree(data->query.f09_bist_query1);
+		kfree((const void *)data->query.Limit_Register_Count);
+		kfree((const void *)data->query.f09_bist_query1);
 	}
 	kfree(fc->data);
 }
@@ -264,6 +264,7 @@ static ssize_t rmi_f09_HostTestEn_store(struct device *dev,
 
 }
 
+#if 0
 static ssize_t rmi_f09_InternalLimits_show(struct device *dev,
 					struct device_attribute *attr,
 					char *buf)
@@ -276,6 +277,7 @@ static ssize_t rmi_f09_InternalLimits_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%u\n",
 			data->query.InternalLimits);
 }
+#endif
 
 static ssize_t rmi_f09_Result_Register_Count_show(struct device *dev,
 					struct device_attribute *attr,
