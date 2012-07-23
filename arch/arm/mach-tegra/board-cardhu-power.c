@@ -1151,6 +1151,7 @@ int __init cardhu_suspend_init(void)
 	return 0;
 }
 
+#if 0
 static struct tegra_tsensor_pmu_data  tpdata = {
 	.poweroff_reg_addr = 0x3F,
 	.poweroff_reg_data = 0x80,
@@ -1161,6 +1162,7 @@ static struct tegra_tsensor_pmu_data  tpdata = {
 	.pmu_16bit_ops = 0,
 	.pmu_i2c_addr = 0x2D,
 };
+#endif
 
 #ifdef CONFIG_TEGRA_EDP_LIMITS
 
