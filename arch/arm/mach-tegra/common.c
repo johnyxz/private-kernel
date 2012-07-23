@@ -313,8 +313,6 @@ void tegra_init_cache(bool init)
 {
 	void __iomem *p = IO_ADDRESS(TEGRA_ARM_PERIF_BASE) + 0x3000;
 	u32 aux_ctrl;
-	u32 speedo;
-	u32 tmp;
 
 #ifdef CONFIG_TRUSTED_FOUNDATIONS
 	/* issue the SMC to enable the L2 */
@@ -328,6 +326,8 @@ void tegra_init_cache(bool init)
 	/* override outer_disable() with our disable */
 	outer_cache.disable = tegra_l2x0_disable;
 #else
+	u32 speedo;
+	u32 tmp;
 #if defined(CONFIG_ARCH_TEGRA_2x_SOC)
 	writel_relaxed(0x331, p + L2X0_TAG_LATENCY_CTRL);
 	writel_relaxed(0x441, p + L2X0_DATA_LATENCY_CTRL);
@@ -355,8 +355,8 @@ void tegra_init_cache(bool init)
 #else
 	writel(0x770, p + L2X0_TAG_LATENCY_CTRL);
 	writel(0x770, p + L2X0_DATA_LATENCY_CTRL);
-#endif
-#endif
+#endif /* CONFIG_TEGRA_SILICON_PLATFORM */
+#endif /* defined */
 	aux_ctrl = readl(p + L2X0_CACHE_TYPE);
 	aux_ctrl = (aux_ctrl & 0x700) << (17-8);
 	aux_ctrl |= 0x7C000001;
