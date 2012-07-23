@@ -450,6 +450,7 @@ static struct attribute *elan_attr[] = {
 
 static struct kobject *android_touch_kobj;
 
+#if 0
 static int elan_ktf3k_touch_sysfs_init(void)
 {
 	int ret ;
@@ -472,6 +473,7 @@ static int elan_ktf3k_touch_sysfs_init(void)
 	}
 	return 0 ;
 }
+#endif
 
 static void elan_touch_sysfs_deinit(void)
 {
@@ -536,7 +538,7 @@ static int elan_ktf3k_ts_read_command(struct i2c_client *client,
 			   u8* cmd, u16 cmd_length, u8 *value, u16 value_length){
        struct i2c_adapter *adapter = client->adapter;
 	struct i2c_msg msg[2];
-	__le16 le_addr;
+//	__le16 le_addr;
 	struct elan_ktf3k_ts_data *ts;
 	int length = 0;
 
@@ -561,7 +563,7 @@ static int elan_ktf3k_i2c_read_packet(struct i2c_client *client,
 	u8 *value, u16 value_length){
        struct i2c_adapter *adapter = client->adapter;
 	struct i2c_msg msg[1];
-	__le16 le_addr;
+//	__le16 le_addr;
 	struct elan_ktf3k_ts_data *ts;
 	int length = 0;
 
@@ -585,7 +587,7 @@ static int __hello_packet_handler(struct i2c_client *client)
 {
 	int rc;
 	uint8_t buf_recv[4] = { 0 };
-	uint8_t buf_recv1[4] = { 0 };
+//	uint8_t buf_recv1[4] = { 0 };
 
 	rc = elan_ktf3k_ts_poll(client);
 	if (rc < 0) {
@@ -615,7 +617,7 @@ static int wait_for_IRQ_Low(struct i2c_client *client, int utime){
 	      return 0; 
     }while(retry_times-- > 0);
 	
-    touch_debug("Wait IRQ time out\n");
+    touch_debug(DEBUG_ERROR, "Wait IRQ time out\n");
     return -1;
 }
 
@@ -814,7 +816,7 @@ static int elan_ktf3k_ts_hw_reset(struct i2c_client *client)
 	return 0;
 }
 
-
+#if 0
 static int elan_ktf3k_ts_set_power_source(struct i2c_client *client, u8 state)
 {
 	uint8_t cmd[] = {CMD_W_PKT, 0x40, 0x00, 0x01};
@@ -846,7 +848,7 @@ static int elan_ktf3k_ts_get_power_source(struct i2c_client *client)
 {
 	int rc = 0;
 	uint8_t cmd[] = {CMD_R_PKT, 0x40, 0x00, 0x01};
-	uint8_t buf[4] = {0}, power_source;
+	uint8_t buf[4] = {0};
 
 	//rc = elan_ktf2k_ts_get_data(client, cmd, buf, 4);
 	rc = elan_ktf3k_ts_read_command(client, cmd, 4, buf, 4);
@@ -856,7 +858,8 @@ static int elan_ktf3k_ts_get_power_source(struct i2c_client *client)
 	return 0;
 }
 
-static void update_power_source(){
+static void update_power_source(void)
+{
       unsigned power_source = now_usb_cable_status;
 	if(private_ts == NULL || work_lock) return;
 
@@ -874,8 +877,8 @@ static void update_power_source(){
 	case USB_AC_Adapter:
           elan_ktf3k_ts_set_power_source(private_ts->client, 2);
       }
-  
 }
+#endif
 
 void touch_callback(unsigned cable_status){ 
       now_usb_cable_status = cable_status;
@@ -1247,11 +1250,11 @@ static int sendI2CPacket(struct i2c_client *client, const unsigned char *buf, un
 		    ret = 0;
 	      }  
 	     if(ret < (length < SIZE_PER_PACKET ? length : SIZE_PER_PACKET)){
-	          touch_debug("Sending packet broken\n");
+	          touch_debug(DEBUG_INFO, "Sending packet broken\n");
 	     } 
 		 	
 	     if(retry_times < 0){
-	          touch_debug("Failed sending I2C touch firmware packet.\n");
+	          touch_debug(DEBUG_INFO, "Failed sending I2C touch firmware packet.\n");
 	          break;
 	     }
      }
@@ -1269,7 +1272,7 @@ static int recvI2CPacket(struct i2c_client *client, unsigned char *buf, unsigned
 	      }  
 				
 	     if(retry_times < 0){
-	          touch_debug("Failed sending I2C touch firmware packet.\n");
+	          touch_debug(DEBUG_INFO, "Failed sending I2C touch firmware packet.\n");
 	          break;
 	     }
      }
@@ -1279,15 +1282,18 @@ static int recvI2CPacket(struct i2c_client *client, unsigned char *buf, unsigned
 
 
 static int firmware_update_header(struct i2c_client *client, const unsigned char *firmware, unsigned int pages_number){
-    int ret, i, mode;
-    int retry_times = 3, write_times; 
+    int ret, i;
+    int write_times; 
     unsigned char packet_data[8] = {0};
     unsigned char isp_cmd[4] = {0x54, 0x00, 0x12, 0x34};
     unsigned char nb_isp_cmd[4] = {0x45, 0x49, 0x41, 0x50};
-    unsigned char *cursor; 
+    const unsigned char *cursor; 
     int boot_code = 0;
     struct elan_ktf3k_ts_data *ts = i2c_get_clientdata(client);
-	
+    int sendCount;
+    int recvCount;
+
+
     if(ts == NULL) 
         return -1;
 
@@ -1328,14 +1334,12 @@ static int firmware_update_header(struct i2c_client *client, const unsigned char
 page_write_retry:
 	  touch_debug(DEBUG_MESSAGES, "Update page number %d\n", i);
 
-          int sendCount;
           if((sendCount = sendI2CPacket(client, cursor, FIRMWARE_PAGE_SIZE)) != FIRMWARE_PAGE_SIZE){
 	      dev_err(&client->dev, "Fail to Update page number %d\n", i);
 		goto fw_update_failed;
 	  }
           touch_debug(DEBUG_INFO, "sendI2CPacket send %d bytes\n", sendCount);
 
-          int recvCount;
           if((recvCount = recvI2CPacket(client, packet_data, FIRMWARE_ACK_SIZE)) != FIRMWARE_ACK_SIZE){
 	      dev_err(&client->dev, "Fail to Update page number %d\n", i);
 	      goto fw_update_failed;
@@ -1411,11 +1415,11 @@ int elan_stress_release(struct inode *inode, struct file *filp)
 	return 0;          /* success */
 }
 
-int elan_stress_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+long elan_stress_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	int err = 1;
 
-	printk("%s\n", __func__, cmd);
+	printk("%s: %u\n", __func__, cmd);
 	if (_IOC_TYPE(cmd) != STRESS_IOC_MAGIC)
 	return -ENOTTY;
 	if (_IOC_NR(cmd) > STRESS_IOC_MAXNR)
@@ -1631,7 +1635,7 @@ err_input_register_device_failed:
 		input_free_device(ts->input_dev);
 
 err_input_dev_alloc_failed:
-err_detect_failed:
+//err_detect_failed:
 	if (ts->elan_wq)
 		destroy_workqueue(ts->elan_wq);
 
@@ -1703,8 +1707,8 @@ static int elan_ktf3k_ts_resume(struct i2c_client *client)
 {
 
 	int rc = 0, retry = 5;
-      struct elan_ktf3k_ts_data *ts = i2c_get_clientdata(client);
-      int delay_time;
+//      struct elan_ktf3k_ts_data *ts = i2c_get_clientdata(client);
+//      int delay_time;
 	touch_debug(DEBUG_INFO, "[elan] %s: enter\n", __func__);
 	if(work_lock == 0){
 	    do {
