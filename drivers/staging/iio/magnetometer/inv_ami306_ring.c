@@ -99,6 +99,7 @@ static int access_cali_file(short *gain)
 	return -1;
 }
 
+#if 0
 /**
  *  inv_irq_handler() - Cache a timestamp at each data ready interrupt.
  */
@@ -111,6 +112,7 @@ static irqreturn_t inv_ami_irq_handler(int irq, void *p)
 
 	return IRQ_WAKE_THREAD;
 }
+#endif
 static int put_scan_to_buf(struct iio_dev *indio_dev, unsigned char *d,
 				short *s, int scan_index) {
 	struct iio_buffer *ring = indio_dev->buffer;
