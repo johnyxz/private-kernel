@@ -129,7 +129,7 @@ static int nct1008_get_temp(struct device *dev, long *pTemp)
 
 	/* Return max between Local and External Temp */
 	*pTemp = max(temp_local_milli, temp_ext_milli);
-	printk("%s: ret temp=%dC \n", __func__, MILLICELSIUS_TO_CELSIUS(*pTemp));
+	printk("%s: ret temp=%ldC \n", __func__, MILLICELSIUS_TO_CELSIUS(*pTemp));
 	return 0;
 error:
 	dev_err(&client->dev, "\n error in file=: %s %s() line=%d: "
@@ -399,6 +399,7 @@ static struct attribute *nct1008_attributes[] = {
 static const struct attribute_group nct1008_attr_group = {
 	.attrs = nct1008_attributes,
 };
+#if 0
 static void dump_reg(const char *reg_name, int offset)
 {
 
@@ -413,6 +414,7 @@ static void dump_reg(const char *reg_name, int offset)
 		printk( "%s: line=%d, i2c read error=%d\n",
 		__func__, __LINE__, ret);
 }
+#endif
 void nct1008_read_stress_test(struct work_struct *work)
 {
 	long temperature=0;
@@ -889,7 +891,7 @@ static int __devinit nct1008_probe(struct i2c_client *client,
 {
 	struct nct1008_data *data;
 	int err;
-	unsigned int delay;
+//	unsigned int delay;
 
 	printk("nct1008_probe+\n");
 	data = kzalloc(sizeof(struct nct1008_data), GFP_KERNEL);
@@ -992,7 +994,7 @@ static int nct1008_suspend(struct i2c_client *client, pm_message_t state)
 
 static int nct1008_resume(struct i2c_client *client)
 {
-	struct nct1008_data *data = i2c_get_clientdata(client);
+//	struct nct1008_data *data = i2c_get_clientdata(client);
 	int err;
 
 	err = nct1008_enable(client);
