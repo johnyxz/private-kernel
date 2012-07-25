@@ -15,15 +15,7 @@
 #include <asm/assembler.h>
 #include <asm/memory.h>
 
-
-ENTRY(s5p_idle2)
-	bl	v7_flush_kern_cache_all
-
-	dmb
-	bl	cpu_v7_do_idle
-
 	.text
-
 	/* s5p_idle2_save
 	 *
 	 * entry:

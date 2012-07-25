@@ -25,6 +25,11 @@
 
 #include "power.h"
 
+#ifdef CONFIG_S5P_IDLE2
+#include <mach/cpuidle.h>
+#endif /* CONFIG_S5P_IDLE2 */
+
+
 enum {
 	DEBUG_USER_STATE = 1U << 0,
 	DEBUG_SUSPEND = 1U << 2,
@@ -93,6 +98,7 @@ static void early_suspend(struct work_struct *work)
 		mutex_unlock(&early_suspend_lock);
 		goto abort;
 	}
+	earlysuspend_active_fn(true);
 
 	if (debug_mask & DEBUG_SUSPEND)
 		pr_info("early_suspend: call handlers\n");
@@ -146,6 +152,7 @@ static void late_resume(struct work_struct *work)
 			pos->resume(pos);
 		}
 	}
+	earlysuspend_active_fn(false);
 	if (debug_mask & DEBUG_SUSPEND)
 		pr_info("late_resume: done\n");
 abort:

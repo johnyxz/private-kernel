@@ -37,10 +37,12 @@
 static bool idle2_disabled __read_mostly = false;
 static bool idle2_disabled_by_suspend = false;
 static bool work_initialised = false;
-static bool idle2_requested;
+static bool idle2_requested = false;
 static bool external_active;
 static bool inactive_pending;
 static bool enable_pending;
+static bool earlysuspend_active = false;
+static bool idle2_cpufreq_lock = false;
 #endif /* CONFIG_S5P_IDLE2 */
 
 
@@ -111,6 +113,15 @@ inline static int s5p_enter_idle_idle2(struct cpuidle_device *device,
 	idle_time = (after.tv_sec - before.tv_sec) * USEC_PER_SEC +
 			(after.tv_usec - before.tv_usec);
 	return idle_time;
+}
+
+void earlysuspend_active_fn(bool flag)
+{
+	if (flag)
+		earlysuspend_active = true;
+	else
+		earlysuspend_active = false;
+	printk(KERN_INFO "earlysuspend_active: %d\n", earlysuspend_active);
 }
 
 static void idle2_requested_fn(bool flag)
@@ -226,10 +237,19 @@ module_param_cb(idle2_disabled, &idle2_disabled_ops, &idle2_disabled, 0644);
 
 static int s5p_idle_prepare(struct cpuidle_device *device)
 {
-	if (!idle2_disabled && !external_active && idle2_requested)
+	if (!idle2_disabled && !external_active && idle2_requested && earlysuspend_active) {
 		device->states[1].flags &= ~CPUIDLE_FLAG_IGNORE;
-	else
+		if (!idle2_cpufreq_lock) {
+			idle2_set_cpufreq_lock(true);
+			idle2_cpufreq_lock = true;
+		}
+	} else {
 		device->states[1].flags |= CPUIDLE_FLAG_IGNORE;
+		if (idle2_cpufreq_lock) {
+			idle2_set_cpufreq_lock(false);
+			idle2_cpufreq_lock = false;
+		}
+	}
 
 	return 0;
 }
@@ -286,8 +306,8 @@ static int s5p_init_cpuidle(void)
 #ifdef CONFIG_S5P_IDLE2
 	/* Deep-Idle top OFF Wait for interrupt state */
 	device->states[1].enter = s5p_enter_idle_deep;
-	device->states[1].exit_latency = 300;	/* uS */
-	device->states[1].target_residency = 5000;
+	device->states[1].exit_latency = 400;	/* uS */
+	device->states[1].target_residency = 2000;
 	device->states[1].flags = CPUIDLE_FLAG_TIME_VALID |
 					CPUIDLE_FLAG_CHECK_BM;
 	strcpy(device->states[1].name, "IDLE2");
@@ -309,7 +329,7 @@ static int s5p_init_cpuidle(void)
 		BUG();
 		return -ENOMEM;
 	}
-	printk(KERN_INFO "cpuidle: IDLE2 support enabled - version 0.200 by <willtisdale@gmail.com>\n");
+	printk(KERN_INFO "cpuidle: IDLE2 support enabled - version 0.201 by <willtisdale@gmail.com>\n");
 
 	register_pm_notifier(&idle2_pm_notifier);
 

@@ -16,8 +16,13 @@
 #include <mach/power-domain.h>
 #include <mach/gpio.h>
 #include <mach/gpio-herring.h>
+#include <linux/cpufreq.h>
+#include <linux/interrupt.h>
 
-#define MAX_CHK_DEV	0xf
+#define MAX_CHK_DEV			0xf
+#define IDLE2_FREQ			(800 * 1000) /* Use 800MHz when entering idle2 */
+#define DISABLE_FURTHER_CPUFREQ 	0x10
+#define ENABLE_FURTHER_CPUFREQ 		0x20
 
 /*
  * For saving & restoring VIC register before entering
@@ -187,6 +192,35 @@ inline static bool enter_idle2_check(void)
 
 }
 
+inline static void idle2_set_cpufreq_lock(bool flag)
+{
+	int ret;
+	if (flag) {
+		preempt_enable();
+		local_irq_enable();
+		ret = cpufreq_driver_target(cpufreq_cpu_get(0), IDLE2_FREQ,
+				DISABLE_FURTHER_CPUFREQ);
+		if (ret < 0)
+			printk(KERN_WARNING "%s: Error %d locking CPUfreq\n", __func__, ret);
+		else
+			printk(KERN_INFO "%s: CPUfreq locked to 800MHz\n", __func__);
+		local_irq_disable();
+		preempt_disable();
+	} else {
+		preempt_enable();
+		local_irq_enable();
+		ret = cpufreq_driver_target(cpufreq_cpu_get(0), IDLE2_FREQ,
+				ENABLE_FURTHER_CPUFREQ);
+		if (ret < 0)
+			printk(KERN_WARNING "%s: Error %d unlocking CPUfreq\n", __func__, ret);
+		else
+			printk(KERN_INFO "%s: CPUfreq unlocked from 800MHz\n", __func__);
+		local_irq_disable();
+		preempt_disable();
+	}
+}
+
+
 /*
  * Before entering, idle2 mode GPIO Power Down Mode
  * Configuration register has to be set with same state
@@ -273,7 +307,9 @@ inline static void s5p_enter_idle2(void)
 
 	/* To check VIC Status register before enter idle2 mode */
 	if (__raw_readl(S5P_VIC2REG(VIC_RAW_STATUS)) & 0x10000) {
+#ifdef CONFIG_S5P_IDLE2_DEBUG
 		printk(KERN_WARNING "%s: VIC interrupt active, bailing!\n", __func__);
+#endif
 		goto skipped_idle2;
 	}
 
@@ -287,9 +323,9 @@ inline static void s5p_enter_idle2(void)
 #ifdef CONFIG_S5P_IDLE2_DEBUG
 		printk(KERN_INFO "*** Entering IDLE2 mode\n");
 #endif
-		s5p_idle2();
+		flush_cache_all();
+		cpu_do_idle();
 	}
-
 skipped_idle2:
 	__raw_writel(save_eint_mask, S5P_EINT_WAKEUP_MASK);
 
