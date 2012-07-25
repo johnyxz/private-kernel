@@ -19,4 +19,6 @@ extern void idle2_disable(void);
 extern void idle2_external_active(void);
 extern void idle2_external_inactive(unsigned long delay);
 extern void earlysuspend_active_fn(bool flag);
+extern void idle2_cancel_topon(unsigned long delay);
+extern void idle2_needs_topon(void);
 #endif

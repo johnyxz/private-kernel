@@ -82,8 +82,8 @@ inline static bool check_sdmmc_op(unsigned int ch)
 	/* Check CLKCON [2]: ENSDCLK */
 	reg2 = readl(base_addr + S3C_HSMMC_CLKCON);
 
-	if ((reg1 & (S3C_HSMMC_CMD_INHIBIT | S3C_HSMMC_DATA_INHIBIT)) ||
-			(reg2 & (S3C_HSMMC_CLOCK_CARD_EN)))
+	if (unlikely((reg1 & (S3C_HSMMC_CMD_INHIBIT | S3C_HSMMC_DATA_INHIBIT)) ||
+			(reg2 & (S3C_HSMMC_CLOCK_CARD_EN))))
 		return true;
 	else
 		return false;
@@ -95,7 +95,7 @@ inline static bool loop_sdmmc_check(void)
 	unsigned int iter;
 
 	for (iter = 0; iter < 3; iter++) {
-		if (check_sdmmc_op(iter)) {
+		if (unlikely(check_sdmmc_op(iter))) {
 #ifdef CONFIG_S5P_IDLE2_DEBUG
 			printk(KERN_INFO "%s: %d returns true\n", __func__, iter);
 #endif
@@ -120,7 +120,7 @@ inline static bool check_onenand_op(void)
 
 	val = __raw_readl(base_addr + 0x0000010c);
 
-	if (val & 0x1) {
+	if (unlikely(val & 0x1)) {
 #ifdef CONFIG_S5P_IDLE2_DEBUG
 		printk(KERN_INFO "%s: check_onenand_op() returns true\n", __func__);
 #endif
@@ -135,8 +135,8 @@ inline static bool check_clock_gating(void)
 
 	/* check clock gating */
 	val = __raw_readl(S5P_CLKGATE_IP0);
-	if (val & (S5P_CLKGATE_IP0_MDMA | S5P_CLKGATE_IP0_PDMA0
-					| S5P_CLKGATE_IP0_G3D | S5P_CLKGATE_IP0_PDMA1)) {
+	if (unlikely(val & (S5P_CLKGATE_IP0_MDMA | S5P_CLKGATE_IP0_PDMA0
+					| S5P_CLKGATE_IP0_G3D | S5P_CLKGATE_IP0_PDMA1))) {
 #ifdef CONFIG_S5P_IDLE2_DEBUG
 		printk(KERN_INFO "%s: S5P_CLKGATE_IP0 - DMA/3D active\n", __func__);
 #endif
@@ -144,8 +144,8 @@ inline static bool check_clock_gating(void)
 	}
 
 	val = __raw_readl(S5P_CLKGATE_IP3);
-	if (val & (S5P_CLKGATE_IP3_I2C0 | S5P_CLKGATE_IP3_I2C_HDMI_DDC
-					| S5P_CLKGATE_IP3_I2C2)) {
+	if (unlikely(val & (S5P_CLKGATE_IP3_I2C0 | S5P_CLKGATE_IP3_I2C_HDMI_DDC
+					| S5P_CLKGATE_IP3_I2C2))) {
 #ifdef CONFIG_S5P_IDLE2_DEBUG
 		printk(KERN_INFO "%s: S5P_CLKGATE_IP3 - i2c / HDMI active\n", __func__);
 #endif
@@ -162,7 +162,7 @@ inline static bool check_idmapos(void)
 	i2sdma_getpos(&src);
 	src = src & 0x3FFF;
 	src = 0x4000 - src;
-	if(src < 0x150){
+	if (unlikely(src < 0x150)) {
 #ifdef CONFIG_S5P_IDLE2_DEBUG
 		printk(KERN_INFO "%s: returns true\n", __func__);
 #endif
@@ -176,7 +176,7 @@ extern unsigned int get_rtc_cnt(void);
 inline static bool check_rtcint(void)
 {
 	unsigned int current_cnt = get_rtc_cnt();
-	if(current_cnt < 0x40){
+	if (unlikely(current_cnt < 0x40)){
 #ifdef CONFIG_S5P_IDLE2_DEBUG
 		printk(KERN_INFO "%s: returns true\n", __func__);
 #endif
@@ -188,7 +188,7 @@ inline static bool check_rtcint(void)
 
 inline static bool enter_idle2_check(void)
 {
-	if (loop_sdmmc_check() || check_clock_gating() || check_idmapos() || check_rtcint() || check_onenand_op())
+	if (unlikely(loop_sdmmc_check() || check_clock_gating() || check_idmapos() || check_rtcint() || check_onenand_op()))
 		return true;
 	else
 		return false;
@@ -308,7 +308,7 @@ inline static void s5p_enter_idle2(void)
 	__raw_writel(tmp, S5P_PWR_CFG);
 
 	/* To check VIC Status register before enter idle2 mode */
-	if (__raw_readl(S5P_VIC2REG(VIC_RAW_STATUS)) & 0x10000) {
+	if (unlikely(__raw_readl(S5P_VIC2REG(VIC_RAW_STATUS)) & 0x10000)) {
 #ifdef CONFIG_S5P_IDLE2_DEBUG
 		printk(KERN_WARNING "%s: VIC interrupt active, bailing!\n", __func__);
 #endif
@@ -321,9 +321,9 @@ inline static void s5p_enter_idle2(void)
 	__raw_writel(tmp, S5P_OTHERS);
 
 	/* Entering idle2 mode with WFI instruction */
-	if (s5p_idle2_save(regs_save) == 0) {
+	if (likely(s5p_idle2_save(regs_save) == 0)) {
 #ifdef CONFIG_S5P_IDLE2_DEBUG
-		printk(KERN_INFO "*** Entering IDLE2 mode\n");
+		printk(KERN_INFO "*** Entering IDLE2 TOP OFF mode\n");
 #endif
 		flush_cache_all();
 		cpu_do_idle();
@@ -345,6 +345,101 @@ skipped_idle2:
 	tmp = __raw_readl(S5P_OTHERS);
 	tmp |= ((1<<31) | (1<<30) | (1<<29) | (1<<28));
 	__raw_writel(tmp, S5P_OTHERS);
+
+	__raw_writel(vic_regs[0], S5P_VIC0REG(VIC_INT_ENABLE));
+	__raw_writel(vic_regs[1], S5P_VIC1REG(VIC_INT_ENABLE));
+	__raw_writel(vic_regs[2], S5P_VIC2REG(VIC_INT_ENABLE));
+	__raw_writel(vic_regs[3], S5P_VIC3REG(VIC_INT_ENABLE));
+}
+
+inline static void s5p_enter_idle2_topon(void)
+{
+	unsigned long tmp;
+	unsigned long save_eint_mask;
+
+	/* store the physical address of the register recovery block */
+	__raw_writel(phy_regs_save, S5P_INFORM2);
+
+	/* ensure at least INFORM0 has the resume address */
+	__raw_writel(virt_to_phys(s5p_idle2_resume), S5P_INFORM0);
+
+	/* Save current VIC_INT_ENABLE register*/
+	vic_regs[0] = __raw_readl(S5P_VIC0REG(VIC_INT_ENABLE));
+	vic_regs[1] = __raw_readl(S5P_VIC1REG(VIC_INT_ENABLE));
+	vic_regs[2] = __raw_readl(S5P_VIC2REG(VIC_INT_ENABLE));
+	vic_regs[3] = __raw_readl(S5P_VIC3REG(VIC_INT_ENABLE));
+
+	/* Disable all interrupt through VIC */
+	__raw_writel(0xffffffff, S5P_VIC0REG(VIC_INT_ENABLE_CLEAR));
+	__raw_writel(0xffffffff, S5P_VIC1REG(VIC_INT_ENABLE_CLEAR));
+	__raw_writel(0xffffffff, S5P_VIC2REG(VIC_INT_ENABLE_CLEAR));
+	__raw_writel(0xffffffff, S5P_VIC3REG(VIC_INT_ENABLE_CLEAR));
+
+	/* GPIO Power Down Control */
+        save_eint_mask = __raw_readl(S5P_EINT_WAKEUP_MASK);
+        __raw_writel(0xFFFFFFFF, S5P_EINT_WAKEUP_MASK);
+
+	/* Wakeup source configuration for idle2 */
+	tmp = __raw_readl(S5P_WAKEUP_MASK);
+
+	tmp |= 0xffff;
+        // Key interrupt mask idma & RTC tic only
+        tmp &= ~((1<<2) | (1<<13));
+
+	__raw_writel(tmp, S5P_WAKEUP_MASK);
+
+	/* Clear wakeup status register */
+	tmp = __raw_readl(S5P_WAKEUP_STAT);
+	__raw_writel(tmp, S5P_WAKEUP_STAT);
+
+	/* IDLE config register set */
+	/* TOP Memory retention on */
+	/* TOP Memory LP mode off */
+	/* ARM_L2_Cacheret on */
+	tmp = __raw_readl(S5P_IDLE_CFG);
+	tmp &= ~(0x3f << 26);
+	tmp |= ((2<<30) | (2<<28) | (1<<26) | (1<<0));
+	__raw_writel(tmp, S5P_IDLE_CFG);
+
+	/* Power mode Config setting */
+	tmp = __raw_readl(S5P_PWR_CFG);
+	tmp &= S5P_CFG_WFI_CLEAN;
+	tmp |= S5P_CFG_WFI_IDLE;
+	__raw_writel(tmp, S5P_PWR_CFG);
+
+	/* To check VIC Status register before enter idle2 mode */
+	if (unlikely(__raw_readl(S5P_VIC2REG(VIC_RAW_STATUS)) & 0x10000)) {
+#ifdef CONFIG_S5P_IDLE2_DEBUG
+		printk(KERN_WARNING "%s: VIC interrupt active, bailing!\n", __func__);
+#endif
+		goto skipped_idle2;
+	}
+
+	/* SYSCON_INT_DISABLE */
+	tmp = __raw_readl(S5P_OTHERS);
+	tmp |= S5P_OTHER_SYSC_INTOFF;
+	__raw_writel(tmp, S5P_OTHERS);
+
+	/* Entering idle2 mode with WFI instruction */
+	if (likely(s5p_idle2_save(regs_save)) == 0) {
+#ifdef CONFIG_S5P_IDLE2_DEBUG
+		printk(KERN_INFO "*** Entering IDLE2 TOP ON mode\n");
+#endif
+		flush_cache_all();
+		cpu_do_idle();
+	}
+skipped_idle2:
+	__raw_writel(save_eint_mask, S5P_EINT_WAKEUP_MASK);
+
+	tmp = __raw_readl(S5P_IDLE_CFG);
+	tmp &= ~((3<<30)|(3<<28)|(3<<26)|(1<<0));
+	tmp |= ((2<<30)|(2<<28));
+	__raw_writel(tmp, S5P_IDLE_CFG);
+
+	/* Power mode Config setting */
+	tmp = __raw_readl(S5P_PWR_CFG);
+	tmp &= S5P_CFG_WFI_CLEAN;
+	__raw_writel(tmp, S5P_PWR_CFG);
 
 	__raw_writel(vic_regs[0], S5P_VIC0REG(VIC_INT_ENABLE));
 	__raw_writel(vic_regs[1], S5P_VIC1REG(VIC_INT_ENABLE));
@@ -383,4 +478,3 @@ int s5p_init_remap(void)
 	}
 	return 0;
 }
-

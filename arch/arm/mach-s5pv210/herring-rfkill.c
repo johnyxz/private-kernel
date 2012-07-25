@@ -166,12 +166,12 @@ irqreturn_t bt_host_wake_irq_handler(int irq, void *dev_id)
 	if (gpio_get_value(GPIO_BT_HOST_WAKE)) {
 		wake_lock(&rfkill_wake_lock);
 #ifdef CONFIG_S5P_IDLE2
-		idle2_external_active();
+		idle2_needs_topon();
 #endif
 	} else {
 		wake_lock_timeout(&rfkill_wake_lock, HZ);
 #ifdef CONFIG_S5P_IDLE2
-		idle2_external_inactive(60 * HZ);
+		idle2_cancel_topon(10 * HZ);
 #endif
 	}
 
