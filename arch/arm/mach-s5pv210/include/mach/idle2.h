@@ -54,6 +54,7 @@ struct check_device_op chk_dev_op[] = {
 #if defined(CONFIG_S3C_DEV_HSMMC3)
 	{.base = 0, .pdev = &s3c_device_hsmmc3},
 #endif
+	{.base = 0, .pdev = &s5p_device_onenand},
 	{.base = 0, .pdev = NULL},
 };
 
@@ -104,38 +105,40 @@ inline static bool loop_sdmmc_check(void)
 	return false;
 }
 
-/*
- * Use power/clock gating checking code from deep-idle by ezekeel. 
- * This code is faster than the Samsung method of checking.
- */
-inline static bool check_power_clock_gating(void)
-{
-	unsigned long val;
+/* Check onenand is working or not */
 
-	/* check power gating */
-	val = __raw_readl(S5P_NORMAL_CFG);
-	if (val & (S5PV210_PD_LCD | S5PV210_PD_CAM | S5PV210_PD_TV
-				  | S5PV210_PD_MFC | S5PV210_PD_G3D)) {
+/* ONENAND_IF_STATUS(0xB060010C)
+ * ORWB[0] = 	1b : busy
+ * 		0b : Not busy
+ **/
+inline static bool check_onenand_op(void)
+{
+	unsigned int val;
+	void __iomem *base_addr;
+
+	base_addr = chk_dev_op[3].base;
+
+	val = __raw_readl(base_addr + 0x0000010c);
+
+	if (val & 0x1) {
 #ifdef CONFIG_S5P_IDLE2_DEBUG
-		printk(KERN_INFO "%s: S5P_NORMAL_CFG not power gated\n", __func__);
+		printk(KERN_INFO "%s: check_onenand_op() returns true\n", __func__);
 #endif
 		return true;
 	}
+	return false;
+}
+
+inline static bool check_clock_gating(void)
+{
+	unsigned long val;
 
 	/* check clock gating */
 	val = __raw_readl(S5P_CLKGATE_IP0);
 	if (val & (S5P_CLKGATE_IP0_MDMA | S5P_CLKGATE_IP0_PDMA0
-					| S5P_CLKGATE_IP0_PDMA1)) {
+					| S5P_CLKGATE_IP0_G3D | S5P_CLKGATE_IP0_PDMA1)) {
 #ifdef CONFIG_S5P_IDLE2_DEBUG
-		printk(KERN_INFO "%s: S5P_CLKGATE_IP0 - DMA active\n", __func__);
-#endif
-		return true;
-	}
-
-	val = __raw_readl(S5P_CLKGATE_IP1);
-	if (val & S5P_CLKGATE_IP1_USBHOST) {
-#ifdef CONFIG_S5P_IDLE2_DEBUG
-		printk(KERN_INFO "%s: S5P_CLKGATE_IP1 - USB Host active\n", __func__);
+		printk(KERN_INFO "%s: S5P_CLKGATE_IP0 - DMA/3D active\n", __func__);
 #endif
 		return true;
 	}
@@ -161,7 +164,7 @@ inline static bool check_idmapos(void)
 	src = 0x4000 - src;
 	if(src < 0x150){
 #ifdef CONFIG_S5P_IDLE2_DEBUG
-		printk(KERN_INFO "%s: check_idmapos() returns true\n", __func__);
+		printk(KERN_INFO "%s: returns true\n", __func__);
 #endif
 		return true;
 	}
@@ -175,7 +178,7 @@ inline static bool check_rtcint(void)
 	unsigned int current_cnt = get_rtc_cnt();
 	if(current_cnt < 0x40){
 #ifdef CONFIG_S5P_IDLE2_DEBUG
-		printk(KERN_INFO "%s: check_rtcint() returns true\n", __func__);
+		printk(KERN_INFO "%s: returns true\n", __func__);
 #endif
 		return true;
 	}
@@ -185,7 +188,7 @@ inline static bool check_rtcint(void)
 
 inline static bool enter_idle2_check(void)
 {
-	if (loop_sdmmc_check() || check_power_clock_gating() || check_idmapos() || check_rtcint())
+	if (loop_sdmmc_check() || check_clock_gating() || check_idmapos() || check_rtcint() || check_onenand_op())
 		return true;
 	else
 		return false;
@@ -219,7 +222,6 @@ inline static void idle2_set_cpufreq_lock(bool flag)
 		preempt_disable();
 	}
 }
-
 
 /*
  * Before entering, idle2 mode GPIO Power Down Mode

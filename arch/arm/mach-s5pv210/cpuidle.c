@@ -329,7 +329,7 @@ static int s5p_init_cpuidle(void)
 		BUG();
 		return -ENOMEM;
 	}
-	printk(KERN_INFO "cpuidle: IDLE2 support enabled - version 0.201 by <willtisdale@gmail.com>\n");
+	printk(KERN_INFO "cpuidle: IDLE2 support enabled - version 0.202 by <willtisdale@gmail.com>\n");
 
 	register_pm_notifier(&idle2_pm_notifier);
 
