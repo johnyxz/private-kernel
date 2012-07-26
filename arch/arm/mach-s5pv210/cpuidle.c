@@ -45,6 +45,7 @@ static bool earlysuspend_active __read_mostly = false;
 static bool idle2_cpufreq_lock = false;
 static bool needs_topon = false;
 static bool topon_cancel_pending;
+static bool topoff_disabled __read_mostly = false;
 #endif /* CONFIG_S5P_IDLE2 */
 
 
@@ -146,8 +147,11 @@ void earlysuspend_active_fn(bool flag)
 {
 	if (flag)
 		earlysuspend_active = true;
-	else
-		earlysuspend_active = false;
+	else if (unlikely(idle2_cpufreq_lock)) {
+			idle2_set_cpufreq_lock(false);
+			idle2_cpufreq_lock = false;
+			earlysuspend_active = false;
+		}
 	printk(KERN_DEBUG "earlysuspend_active: %d\n", earlysuspend_active);
 }
 
@@ -183,7 +187,7 @@ inline static int s5p_enter_idle_deep_topoff(struct cpuidle_device *device,
 {
 	if (unlikely(idle2_disabled || idle2_disabled_by_suspend))
 		return s5p_enter_idle_normal(device, state);
-	if (unlikely(needs_topon)) {
+	if (unlikely(needs_topon || topoff_disabled)) {
 		return s5p_enter_idle_idle2_topon(device, state);
 		printk(KERN_WARNING "%s: we shouldn't be here\n", __func__);
 	}
@@ -316,10 +320,28 @@ static struct kernel_param_ops idle2_disabled_ops = {
 };
 module_param_cb(idle2_disabled, &idle2_disabled_ops, &idle2_disabled, 0644);
 
+static int topoff_disabled_set(const char *arg, const struct kernel_param *kp)
+{
+	int ret;
+	printk(KERN_INFO "%s: %s\n", __func__, arg);
+	return ret = param_set_bool(arg, kp);
+}
+
+static int topoff_disabled_get(char *buffer, const struct kernel_param *kp)
+{
+	return param_get_bool(buffer, kp);
+}
+
+static struct kernel_param_ops topoff_disabled_ops = {
+	.set = topoff_disabled_set,
+	.get = topoff_disabled_get,
+};
+module_param_cb(topoff_disabled, &topoff_disabled_ops, &topoff_disabled, 0644);
+
 static int s5p_idle_prepare(struct cpuidle_device *device)
 {
 	if (!idle2_disabled && !external_active && idle2_requested && earlysuspend_active) {
-		if (unlikely(needs_topon)) {
+		if (unlikely(needs_topon || topoff_disabled)) {
 			device->states[2].flags &= ~CPUIDLE_FLAG_IGNORE;
 			device->states[1].flags |= CPUIDLE_FLAG_IGNORE;
 		} else {
@@ -333,9 +355,6 @@ static int s5p_idle_prepare(struct cpuidle_device *device)
 	} else {
 		device->states[1].flags |= CPUIDLE_FLAG_IGNORE;
 		device->states[2].flags |= CPUIDLE_FLAG_IGNORE;
-		if (unlikely(idle2_cpufreq_lock)) {
-			idle2_set_cpufreq_lock(false);
-			idle2_cpufreq_lock = false;
 		}
 	}
 
@@ -433,7 +452,7 @@ static int s5p_init_cpuidle(void)
 		BUG();
 		return -ENOMEM;
 	}
-	printk(KERN_INFO "cpuidle: IDLE2 support enabled - version 0.210 by <willtisdale@gmail.com>\n");
+	printk(KERN_INFO "cpuidle: IDLE2 support enabled - version 0.211 by <willtisdale@gmail.com>\n");
 
 	register_pm_notifier(&idle2_pm_notifier);
 
