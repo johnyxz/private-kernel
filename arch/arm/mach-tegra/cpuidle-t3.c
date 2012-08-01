@@ -175,11 +175,11 @@ bool tegra3_lp2_is_allowed(struct cpuidle_device *dev,
 		return false;
 	}
 	/*
-	 * Double the residency for the LP core as it costs more to
+	 * Increase the residency for the LP core as it costs more to
 	 * enter than is saved at low residencies, hence why power usage
 	 * actually increases when lp2 is enabled
 	 */
-	if (is_lp_cluster() && request < (state->target_residency * 2))
+	if (is_lp_cluster() && request < (state->target_residency + 4000))
 	{
 		/* Not enough time left to enter LP2 */
 		return false;
