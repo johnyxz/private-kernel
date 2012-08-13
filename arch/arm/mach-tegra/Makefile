@@ -206,3 +206,6 @@ obj-y                                   += eeprom-wifi-mac.o
 obj-${CONFIG_TEGRA_BB_XMM_POWER}        += baseband-xmm-power.o
 obj-${CONFIG_TEGRA_BB_XMM_POWER2}       += baseband-xmm-power2.o
 
+ifeq ($(CONFIG_HAS_EARLYSUSPEND),y)
+obj-$(CONFIG_ARCH_TEGRA_3x_SOC)		+= earlysuspend_t3.o
+endif
