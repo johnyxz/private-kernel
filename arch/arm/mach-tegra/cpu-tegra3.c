@@ -100,7 +100,7 @@ static void hp_init_stats(void)
 
 }
 
-static void hp_stats_update(unsigned int cpu, bool up)
+void hp_stats_update(unsigned int cpu, bool up)
 {
 	u64 cur_jiffies = get_jiffies_64();
 	bool was_up = hp_stats[cpu].up_down_count & 0x1;
@@ -122,7 +122,7 @@ static void hp_stats_update(unsigned int cpu, bool up)
 	}
 	hp_stats[cpu].last_update = cur_jiffies;
 }
-
+EXPORT_SYMBOL(hp_stats_update);
 
 enum {
 	TEGRA_HP_DISABLED = 0,
@@ -211,9 +211,21 @@ static noinline int tegra_cpu_speed_balance(void)
 }
 void disable_auto_hotplug(void)
 {
+	bool ret;
 	hp_state=TEGRA_HP_DISABLED;
-	cancel_delayed_work(&hotplug_work);
+	ret = cancel_delayed_work_sync(&hotplug_work);
+	if (ret)
+		printk("%s: Cancelled delayed work\n", __func__);
 }
+EXPORT_SYMBOL(disable_auto_hotplug);
+
+void enable_auto_hotplug(void)
+{
+	hp_state=TEGRA_HP_UP;
+	queue_delayed_work(hotplug_wq, &hotplug_work, up2g0_delay);
+}
+EXPORT_SYMBOL(enable_auto_hotplug);
+
 static void tegra_auto_hotplug_work_func(struct work_struct *work)
 {
 	bool up = false;
@@ -452,12 +464,11 @@ static int hp_stats_show(struct seq_file *s, void *data)
 	u64 cur_jiffies = get_jiffies_64();
 
 	mutex_lock(tegra3_cpu_lock);
-	if (hp_state != TEGRA_HP_DISABLED) {
-		for (i = 0; i <= CONFIG_NR_CPUS; i++) {
-			bool was_up = (hp_stats[i].up_down_count & 0x1);
-			hp_stats_update(i, was_up);
-		}
+	for (i = 0; i <= CONFIG_NR_CPUS; i++) {
+		bool was_up = (hp_stats[i].up_down_count & 0x1);
+		hp_stats_update(i, was_up);
 	}
+
 	mutex_unlock(tegra3_cpu_lock);
 
 	seq_printf(s, "%-15s ", "cpu:");
