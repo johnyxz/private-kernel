@@ -75,42 +75,85 @@ static struct cpuidle_driver s5p_idle_driver = {
 };
 
 #ifdef CONFIG_S5P_IDLE2
-inline static int s5p_enter_idle_idle2_topon(struct cpuidle_device *device,
+inline static int s5p_enter_idle_idle2(struct cpuidle_device *device,
 				struct cpuidle_state *state)
 {
 	struct timeval before, after;
 	int idle_time;
 
-	local_irq_disable();
-	do_gettimeofday(&before);
+	/* Reset flags */
+	idle2_flags &= ~FORCE_C1_IDLE;
+	idle2_flags &= ~FORCE_C2_IDLE;
 
-	s5p_enter_idle2_topon();
-	do_gettimeofday(&after);
-	local_irq_enable();
-	idle_time = (after.tv_sec - before.tv_sec) * USEC_PER_SEC +
-			(after.tv_usec - before.tv_usec);
-	return idle_time;
-}
-
-/* Actual code that puts the SoC in different idle states */
-inline static int s5p_enter_idle_idle2_topoff(struct cpuidle_device *device,
-				struct cpuidle_state *state)
-{
-	struct timeval before, after;
-	int idle_time;
-
-	if (unlikely(enter_idle2_check())) {
-		pr_debug("%s: C3 failed, falling back to C1\n", __func__);
-		s5p_enter_idle_normal(device, state);
-		return 0;
+	/* Check for reasons to disable DEEP-IDLE */
+	if (unlikely(idle2_flags & DISABLED_BY_SUSPEND)) {
+		idle2_flags |= FORCE_C1_IDLE;
+		pr_debug("%s: Setting FORCE_C1_IDLE\n", __func__);
+		goto begin_enter_state;
 	}
 
-	local_irq_disable();
+	/* Check for reasons to disable DEEP-IDLE TOP block off */
+	if (unlikely((idle2_flags & NEEDS_TOPON)
+		|| (!(idle2_flags & EARLYSUSPEND_ACTIVE))
+		|| (idle2_flags & EXTERNAL_ACTIVE))) {
+		idle2_flags |= FORCE_C2_IDLE;
+		pr_debug("%s: Setting FORCE_C2_IDLE\n", __func__);
+		goto begin_enter_state;
+	}
+
+	/* Default for DEEP-IDLE TOP block on is to fall through to here */
+
+begin_enter_state:
 	do_gettimeofday(&before);
 
-	s5p_enter_idle2();
+	local_irq_disable();
+	local_fiq_disable();
+
+	if (unlikely(s5p_vic_interrupt_pending() || need_resched())) {
+		pr_debug("%s: Bailing before entry!\n", __func__);
+		goto return_idle_time;
+	}
+
+	if (unlikely((idle2_flags & FORCE_C1_IDLE) || enter_idle2_check()))
+		goto enter_C1_state;
+
+	if (unlikely(idle2_flags & FORCE_C2_IDLE)) {
+		goto enter_C2_state;
+	}
+
+	if (likely(!(idle2_flags & FORCE_C2_IDLE)
+		&& (!(idle2_flags & FORCE_C1_IDLE))))
+		goto enter_C3_state;
+
+	/*
+	 * If somehow we fall through to here, we will end up in
+	 * C1, which is the safe state, but warn anyway, because
+	 * we shouldn't have got here.
+	 */
+	WARN_ON(0);
+
+enter_C1_state:
+	s5p_enter_idle();
+	goto return_idle_time;
+
+enter_C2_state:
+	s5p_enter_idle2(true);
+	goto return_idle_time;
+
+enter_C3_state:
+	s5p_enter_idle2(false);
+	goto return_idle_time;
+
+return_idle_time:
 	do_gettimeofday(&after);
 	local_irq_enable();
+	local_fiq_enable();
+
+	/*
+	 * TODO: Fix the stat reporting or write a simple stat exporter
+	 * the current stats are utterly useless other than to see if
+	 * cpuidle is working or not. :(
+	 */
 	idle_time = (after.tv_sec - before.tv_sec) * USEC_PER_SEC +
 			(after.tv_usec - before.tv_usec);
 	return idle_time;
@@ -122,7 +165,7 @@ void earlysuspend_active_fn(bool flag)
 		idle2_flags |= EARLYSUSPEND_ACTIVE;
 	else
 		idle2_flags &= ~EARLYSUSPEND_ACTIVE;
-	pr_debug(KERN_DEBUG "earlysuspend_active: %d\n", flag);
+	pr_info("earlysuspend_active: %d\n", flag);
 }
 
 static void external_active_fn(bool flag)
@@ -131,7 +174,7 @@ static void external_active_fn(bool flag)
 		idle2_flags |= EXTERNAL_ACTIVE;
 	else
 		idle2_flags &= ~EXTERNAL_ACTIVE;
-	pr_debug(KERN_DEBUG "external_active: %d\n", flag);
+	pr_info("external_active: %d\n", flag);
 }
 
 static void needs_topon_fn(bool flag)
@@ -140,31 +183,7 @@ static void needs_topon_fn(bool flag)
 		idle2_flags |= NEEDS_TOPON;
 	else
 		idle2_flags &= ~NEEDS_TOPON;
-	pr_debug(KERN_DEBUG "needs_topon: %d\n", flag);
-}
-
-inline static int s5p_enter_idle_deep_topoff(struct cpuidle_device *device,
-				struct cpuidle_state *state)
-{
-	if (unlikely((idle2_flags & DISABLED_BY_SUSPEND) == DISABLED_BY_SUSPEND)) {
-		printk(KERN_WARNING "%s: Calling s5p_enter_idle_normal()\n", __func__);
-		return s5p_enter_idle_normal(device, state);
-	}
-	if (unlikely((idle2_flags & NEEDS_TOPON) == NEEDS_TOPON)) {
-		printk(KERN_WARNING "%s: Calling s5p_enter_idle_idle2_topon()\n", __func__);
-		return s5p_enter_idle_idle2_topon(device, state);
-	}
-	return s5p_enter_idle_idle2_topoff(device, state);
-}
-
-inline static int s5p_enter_idle_deep_topon(struct cpuidle_device *device,
-				struct cpuidle_state *state)
-{
-	if (unlikely((idle2_flags & DISABLED_BY_SUSPEND) == DISABLED_BY_SUSPEND)) {
-		printk(KERN_WARNING "%s: Calling s5p_enter_idle_normal()\n", __func__);
-		return s5p_enter_idle_normal(device, state);
-	}
-	return s5p_enter_idle_idle2_topon(device, state);
+	pr_info("needs_topon: %d\n", flag);
 }
 
 static void idle2_external_active_work_fn(struct work_struct *work)
@@ -191,69 +210,46 @@ static void idle2_cancel_topon_work_fn(struct work_struct *work)
 
 void idle2_external_active(void)
 {
-	if (((idle2_flags & WORK_INITIALISED) == WORK_INITIALISED)
-		&& (((idle2_flags & EXTERNAL_ACTIVE) != EXTERNAL_ACTIVE)
-		|| ((idle2_flags & INACTIVE_PENDING) == INACTIVE_PENDING))) {
+	if ((idle2_flags & WORK_INITIALISED)
+		&& ((!(idle2_flags & EXTERNAL_ACTIVE))
+		|| (idle2_flags & INACTIVE_PENDING))) {
 		queue_work(idle2_wq, &idle2_external_active_work);
 		idle2_flags &= ~INACTIVE_PENDING;
-		pr_debug(KERN_DEBUG "inactive_pending: false\n");
+		pr_debug("inactive_pending: false\n");
 	}
 }
 
 void idle2_external_inactive(unsigned long delay)
 {
-	if (((idle2_flags & WORK_INITIALISED) == WORK_INITIALISED)
-		&& ((idle2_flags & EXTERNAL_ACTIVE) == EXTERNAL_ACTIVE)
-		&& ((idle2_flags & INACTIVE_PENDING) != INACTIVE_PENDING)) {
+	if ((idle2_flags & WORK_INITIALISED)
+		&& (idle2_flags & EXTERNAL_ACTIVE)
+		&& (!(idle2_flags & INACTIVE_PENDING))) {
 		idle2_flags |= INACTIVE_PENDING;
 		queue_delayed_work(idle2_wq, &idle2_external_inactive_work, delay);
-		pr_debug(KERN_DEBUG "inactive_pending: true\n");
+		pr_debug("inactive_pending: true\n");
 	}
 }
 
 void idle2_needs_topon(void)
 {
-	if (((idle2_flags & WORK_INITIALISED) == WORK_INITIALISED)
-		&& (((idle2_flags & NEEDS_TOPON) != NEEDS_TOPON)
-		|| ((idle2_flags & TOPON_CANCEL_PENDING) == TOPON_CANCEL_PENDING))) {
+	if ((idle2_flags & WORK_INITIALISED)
+		&& (!(idle2_flags & NEEDS_TOPON)
+		|| (idle2_flags & TOPON_CANCEL_PENDING))) {
 		queue_work(idle2_wq, &idle2_enable_topon_work);
 		idle2_flags &= ~TOPON_CANCEL_PENDING;
-		pr_debug(KERN_DEBUG "topon_cancel_pending: false\n");
+		pr_debug("topon_cancel_pending: false\n");
 	}
 }
 
 void idle2_cancel_topon(unsigned long delay)
 {
-	if (((idle2_flags & WORK_INITIALISED) == WORK_INITIALISED)
-		&& ((idle2_flags & NEEDS_TOPON) == NEEDS_TOPON)
-		&& ((idle2_flags & TOPON_CANCEL_PENDING) != TOPON_CANCEL_PENDING)) {
+	if ((idle2_flags & WORK_INITIALISED)
+		&& (idle2_flags & NEEDS_TOPON)
+		&& (!(idle2_flags & TOPON_CANCEL_PENDING))) {
 		idle2_flags |= TOPON_CANCEL_PENDING;
 		queue_delayed_work(idle2_wq, &idle2_cancel_topon_work, delay);
-		pr_debug(KERN_DEBUG "topon_cancel_pending: true\n");
+		pr_debug("topon_cancel_pending: true\n");
 	}
-}
-
-static int s5p_idle_prepare(struct cpuidle_device *device)
-{
-	if (unlikely((idle2_flags & DISABLED_BY_SUSPEND) == DISABLED_BY_SUSPEND)) {
-		device->states[0].flags &= ~CPUIDLE_FLAG_IGNORE;
-		device->states[1].flags |= CPUIDLE_FLAG_IGNORE;
-		device->states[2].flags |= CPUIDLE_FLAG_IGNORE;
-		return 0;
-	}
-	if (((idle2_flags & NEEDS_TOPON) == NEEDS_TOPON)
-		|| ((idle2_flags & EARLYSUSPEND_ACTIVE) != EARLYSUSPEND_ACTIVE)
-		|| ((idle2_flags & EXTERNAL_ACTIVE) == EXTERNAL_ACTIVE)) {
-		device->states[0].flags |= CPUIDLE_FLAG_IGNORE;
-		device->states[1].flags &= ~CPUIDLE_FLAG_IGNORE;
-		device->states[2].flags |= CPUIDLE_FLAG_IGNORE;
-		return 0;
-	} else {
-		device->states[0].flags |= CPUIDLE_FLAG_IGNORE;
-		device->states[1].flags |= CPUIDLE_FLAG_IGNORE;
-		device->states[2].flags &= ~CPUIDLE_FLAG_IGNORE;
-	}
-	return 0;
 }
 
 static int idle2_pm_notify(struct notifier_block *nb,
@@ -261,11 +257,11 @@ static int idle2_pm_notify(struct notifier_block *nb,
 {
 	if (event == PM_SUSPEND_PREPARE) {
 		idle2_flags |= DISABLED_BY_SUSPEND;
-		printk(KERN_INFO "%s: IDLE2 disabled\n", __func__);
+		pr_info("%s: IDLE2 disabled\n", __func__);
 	}
 	else if (event == PM_POST_SUSPEND) {
 		idle2_flags &= ~DISABLED_BY_SUSPEND;
-		printk(KERN_INFO "%s: IDLE2 enabled\n", __func__);
+		pr_info("%s: IDLE2 enabled\n", __func__);
 	}
 	return NOTIFY_OK;
 }
@@ -307,50 +303,34 @@ static int s5p_init_cpuidle(void)
 	device = &per_cpu(s5p_cpuidle_device, smp_processor_id());
 	device->state_count = 0;
 
+#ifndef CONFIG_S5P_IDLE2
 	/* Wait for interrupt state */
 	device->states[0].enter = s5p_enter_idle_normal;
-	device->states[0].exit_latency = 6;	/* uS */
-	device->states[0].target_residency = 6;
+	device->states[0].exit_latency = 1;	/* uS */
+	device->states[0].target_residency = 10000;
 	device->states[0].flags = CPUIDLE_FLAG_TIME_VALID;
-	strcpy(device->states[0].name, "C1");
+	strcpy(device->states[0].name, "IDLE");
 	strcpy(device->states[0].desc, "ARM clock gating - WFI");
 	device->state_count++;
-	
-#ifdef CONFIG_S5P_IDLE2
-	/* Deep-Idle top ON Wait for interrupt state */
-	device->states[1].enter = s5p_enter_idle_deep_topon;
-	device->states[1].exit_latency = 1400;
-	device->states[1].target_residency = 5000;
-	device->states[1].flags = CPUIDLE_FLAG_TIME_VALID;
-	strcpy(device->states[1].name, "C2");
-	strcpy(device->states[1].desc, "ARM Power gating - WFI");
-	device->state_count++;
-
+#else
 	/* Deep-Idle top OFF Wait for interrupt state */
-	device->states[2].enter = s5p_enter_idle_deep_topoff;
-	device->states[2].exit_latency = 1800;
-	device->states[2].target_residency = 5000;
-	device->states[2].flags = CPUIDLE_FLAG_TIME_VALID |
+	device->states[0].enter = s5p_enter_idle_idle2;
+	device->states[0].exit_latency = 1;
+	device->states[0].target_residency = 5000;
+	device->states[0].flags = CPUIDLE_FLAG_TIME_VALID |
 					CPUIDLE_FLAG_CHECK_BM;
-	strcpy(device->states[2].name, "C3");
-	strcpy(device->states[2].desc, "ARM/TOP/SUB Power gating - WFI");
+	strcpy(device->states[0].name, "IDLE2");
+	strcpy(device->states[0].desc, "ARM (TOP/SUB) Power gating - WFI");
 	device->state_count++;
-
-	/*
-	 * Device prepare isn't required when we are building with
-	 * CONFIG_S5P_IDLE2 disabled as there is only one active state
-	 * so there is nothing to prepare.
-	 */
-	device->prepare = s5p_idle_prepare;
 #endif
 
 	if (cpuidle_register_device(device)) {
-		printk(KERN_ERR "s5p_init_cpuidle: Failed registering\n");
+		pr_err("s5p_init_cpuidle: Failed registering\n");
 		BUG();
 		return -EIO;
 	}
 #ifdef CONFIG_S5P_IDLE2
-	printk(KERN_INFO "cpuidle: IDLE2 support enabled - version 0.300 by <willtisdale@gmail.com>\n");
+	pr_info("cpuidle: IDLE2 support enabled - version 0.310 by <willtisdale@gmail.com>\n");
 
 	register_pm_notifier(&idle2_pm_notifier);
 
