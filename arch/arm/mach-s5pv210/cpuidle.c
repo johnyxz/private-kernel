@@ -236,6 +236,7 @@ void idle2_cancel_topon(unsigned long delay)
 static int s5p_idle_prepare(struct cpuidle_device *device)
 {
 	if (unlikely((idle2_flags & DISABLED_BY_SUSPEND) == DISABLED_BY_SUSPEND)) {
+		device->states[0].flags &= ~CPUIDLE_FLAG_IGNORE;
 		device->states[1].flags |= CPUIDLE_FLAG_IGNORE;
 		device->states[2].flags |= CPUIDLE_FLAG_IGNORE;
 		return 0;
@@ -243,11 +244,13 @@ static int s5p_idle_prepare(struct cpuidle_device *device)
 	if (((idle2_flags & NEEDS_TOPON) == NEEDS_TOPON)
 		|| ((idle2_flags & EARLYSUSPEND_ACTIVE) != EARLYSUSPEND_ACTIVE)
 		|| ((idle2_flags & EXTERNAL_ACTIVE) == EXTERNAL_ACTIVE)) {
+		device->states[0].flags |= CPUIDLE_FLAG_IGNORE;
 		device->states[1].flags &= ~CPUIDLE_FLAG_IGNORE;
 		device->states[2].flags |= CPUIDLE_FLAG_IGNORE;
 		return 0;
 	} else {
-		device->states[1].flags &= ~CPUIDLE_FLAG_IGNORE;
+		device->states[0].flags |= CPUIDLE_FLAG_IGNORE;
+		device->states[1].flags |= CPUIDLE_FLAG_IGNORE;
 		device->states[2].flags &= ~CPUIDLE_FLAG_IGNORE;
 	}
 	return 0;

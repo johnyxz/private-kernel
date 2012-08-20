@@ -24,7 +24,6 @@
 
 /* IDLE2 control flags */
 static unsigned char idle2_flags;
-
 #define DISABLED_BY_SUSPEND	(1 << 0)
 #define EXTERNAL_ACTIVE		(1 << 1)
 #define WORK_INITIALISED	(1 << 2)
@@ -46,6 +45,7 @@ struct delayed_work idle2_cancel_topon_work;
  */
 static unsigned long vic_regs[4];
 static unsigned long tmp;
+static unsigned long save_eint_mask;
 
 /* Specific device list for checking before entering
  * idle2 mode
@@ -229,13 +229,14 @@ inline static void idle2_pre_idle_cfg_set(void)
 
 	/* Wakeup source configuration for idle2 */
 	/* Wake up from EINT22 and 29 */
+	save_eint_mask = __raw_readl(S5P_EINT_WAKEUP_MASK);
 	tmp = s3c_irqwake_eintmask;
-	tmp &= ~((1<<22) | (1<<29));
+	tmp &= ~((1 << 22) | (1 << 29));
 	__raw_writel(tmp, S5P_EINT_WAKEUP_MASK);
 
 	/* Wake from RTC Alarm, RTC tic and i2s */
 	tmp = s3c_irqwake_intmask;
-	tmp &= ~((1<<1) | (1<<2) | (1<<13));
+	tmp &= ~((1 << 1) | (1 << 2) | (1 << 13));
 	__raw_writel(tmp, S5P_WAKEUP_MASK);
 
 	/* Clear wakeup status register */
@@ -246,8 +247,9 @@ inline static void idle2_post_wake_cfg_reset(void)
 {
 	/* Reset the IDLE CFG register */
 	tmp = __raw_readl(S5P_IDLE_CFG);
-	tmp &= ~((3<<30) | (3<<28) | (3<<26) | (1<<0));
-	tmp |= ((2<<30) | (2<<28));
+	tmp &= ~(S5P_IDLE_CFG_TL_MASK | S5P_IDLE_CFG_TM_MASK |
+		S5P_IDLE_CFG_L2_MASK | S5P_IDLE_CFG_DIDLE);
+	tmp |= (S5P_IDLE_CFG_TL_ON | S5P_IDLE_CFG_TM_ON);
 	__raw_writel(tmp, S5P_IDLE_CFG);
 
 	/* Reset the Power CFG register */
@@ -255,8 +257,8 @@ inline static void idle2_post_wake_cfg_reset(void)
 	tmp &= S5P_CFG_WFI_CLEAN;
 	__raw_writel(tmp, S5P_PWR_CFG);
 
-	/* Reset the EINT Wakeup mask */
-	__raw_writel(s3c_irqwake_eintmask, S5P_EINT_WAKEUP_MASK);
+	/* Restore the EINT Wakeup mask */
+	__raw_writel(save_eint_mask, S5P_EINT_WAKEUP_MASK);
 }
 
 /*
@@ -316,13 +318,12 @@ inline static int s5p_enter_idle2(void)
 	/* GPIO Power Down Control */
 	s5p_gpio_pdn_conf();
 
-	/* IDLE config register set */
-	/* TOP Memory retention off */
-	/* TOP Memory LP mode       */
-	/* ARM_L2_Cacheret on       */
+	/* Configure IDLE_CFG register */
 	tmp = __raw_readl(S5P_IDLE_CFG);
-	tmp &= ~(0x3fU<<26);
-	tmp |= ((1<<30) | (1<<28) | (1<<26) | (1<<0));
+	/* No idea what this shift is for... */
+	tmp &= ~(0x3fU << 26);
+	tmp |= (S5P_IDLE_CFG_TL_RET | S5P_IDLE_CFG_TM_RET
+		| S5P_IDLE_CFG_L2_RET | S5P_IDLE_CFG_DIDLE);
 	__raw_writel(tmp, S5P_IDLE_CFG);
 
 	/* Set configuration for idle entry */
@@ -339,7 +340,8 @@ inline static int s5p_enter_idle2(void)
 
 	/* Release retention of GPIO/MMC/UART IO */
 	tmp = __raw_readl(S5P_OTHERS);
-	tmp |= ((1<<31) | (1<<30) | (1<<29) | (1<<28));
+	tmp |= (S5P_OTHERS_RET_IO | S5P_OTHERS_RET_CF
+		| S5P_OTHERS_RET_MMC | S5P_OTHERS_RET_UART);
 	__raw_writel(tmp, S5P_OTHERS);
 
 	/* Post idle configuration restore */
@@ -375,13 +377,12 @@ inline static int s5p_enter_idle2_topon(void)
 		return -EBUSY;
 	}
 
-	/* IDLE config register set */
-	/* TOP Memory retention on */
-	/* TOP Memory LP mode off */
-	/* ARM_L2_Cacheret on */
+	/* Configure IDLE_CFG register */
 	tmp = __raw_readl(S5P_IDLE_CFG);
-	tmp &= ~(0x3fU<<26);
-	tmp |= ((2<<30) | (2<<28) | (1<<26) | (1<<0));
+	/* No idea what this shift is for... */
+	tmp &= ~(0x3fU << 26);
+	tmp |= (S5P_IDLE_CFG_TL_ON | S5P_IDLE_CFG_TM_ON
+		| S5P_IDLE_CFG_L2_RET | S5P_IDLE_CFG_DIDLE);
 	__raw_writel(tmp, S5P_IDLE_CFG);
 
 	/* Set configuration for idle entry */
