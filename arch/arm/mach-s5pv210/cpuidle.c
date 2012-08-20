@@ -109,15 +109,13 @@ begin_enter_state:
 	local_irq_disable();
 	local_fiq_disable();
 
-	if (unlikely((idle2_flags & FORCE_C1_IDLE) || enter_idle2_check()))
-		goto enter_C1_state;
-
-	s5p_clear_vic_interrupts();
-
 	if (unlikely(s5p_vic_interrupt_pending() || need_resched())) {
 		pr_debug("%s: Bailing before entry!\n", __func__);
-		goto restore_vic_interrupts;
+		goto return_idle_time;
 	}
+
+	if (unlikely((idle2_flags & FORCE_C1_IDLE) || enter_idle2_check()))
+		goto enter_C1_state;
 
 	if (unlikely(idle2_flags & FORCE_C2_IDLE)) {
 		goto enter_C2_state;
@@ -140,14 +138,11 @@ enter_C1_state:
 
 enter_C2_state:
 	s5p_enter_idle2(true);
-	goto restore_vic_interrupts;
+	goto return_idle_time;
 
 enter_C3_state:
 	s5p_enter_idle2(false);
-	goto restore_vic_interrupts;
-
-restore_vic_interrupts:
-	s5p_restore_vic_interrupts();
+	goto return_idle_time;
 
 return_idle_time:
 	do_gettimeofday(&after);

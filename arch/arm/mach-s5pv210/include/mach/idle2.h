@@ -186,13 +186,16 @@ inline static bool s5p_vic_interrupt_pending(void)
 		return false;
 }
 
-inline static void s5p_clear_vic_interrupts(void)
+inline static void s5p_save_vic_interrupts(void)
 {
 	vic_regs[0] = __raw_readl(VA_VIC0 + VIC_INT_ENABLE);
 	vic_regs[1] = __raw_readl(VA_VIC1 + VIC_INT_ENABLE);
 	vic_regs[2] = __raw_readl(VA_VIC2 + VIC_INT_ENABLE);
 	vic_regs[3] = __raw_readl(VA_VIC3 + VIC_INT_ENABLE);
+}
 
+inline static void s5p_disable_vic_interrupts(void)
+{
 	__raw_writel(0xffffffff, (VA_VIC0 + VIC_INT_ENABLE_CLEAR));
 	__raw_writel(0xffffffff, (VA_VIC1 + VIC_INT_ENABLE_CLEAR));
 	__raw_writel(0xffffffff, (VA_VIC2 + VIC_INT_ENABLE_CLEAR));
@@ -296,13 +299,17 @@ inline static int s5p_enter_idle2(bool top_status)
 	/* ensure at least INFORM0 has the resume address */
 	__raw_writel(virt_to_phys(s3c_cpu_resume), S5P_INFORM0);
 
+	/* Save and disable VIC interrupts */
+	s5p_save_vic_interrupts();
+	s5p_disable_vic_interrupts();
+
 	/*
-	 * Check VIC Status again before entering IDLE2 mode.
-	 * Return EBUSY if there is an interrupt pending
-	 * Interrupts will be re-enabled in s5p_enter_idle_idle2()
+	 * Check VIC Status before entering IDLE2 mode.
+	 * Return EBUSY if there is an interrupt pending.
 	 */
 	if (unlikely(s5p_vic_interrupt_pending())) {
 		pr_debug("%s: VIC interrupt pending, bailing!\n", __func__);
+		s5p_restore_vic_interrupts();
 		return -EBUSY;
 	}
 
@@ -344,6 +351,8 @@ inline static int s5p_enter_idle2(bool top_status)
 
 	/* Post idle configuration restore */
 	idle2_post_wake_cfg_reset();
+	s5p_restore_vic_interrupts();
+
 	return 0;
 }
 
