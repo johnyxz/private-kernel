@@ -23,7 +23,7 @@
 #define MAX_CHK_DEV	5
 
 /* IDLE2 control flags */
-static unsigned int idle2_flags;
+static unsigned char idle2_flags;
 #define DISABLED_BY_SUSPEND	(1 << 0)
 #define EXTERNAL_ACTIVE		(1 << 1)
 #define WORK_INITIALISED	(1 << 2)
@@ -31,15 +31,13 @@ static unsigned int idle2_flags;
 #define EARLYSUSPEND_ACTIVE	(1 << 4)
 #define NEEDS_TOPON		(1 << 5)
 #define TOPON_CANCEL_PENDING	(1 << 6)
-#define FORCE_C1_IDLE		(1 << 7)
-#define FORCE_C2_IDLE		(1 << 8)
+
 
 static struct workqueue_struct *idle2_wq;
 struct work_struct idle2_external_active_work;
 struct delayed_work idle2_external_inactive_work;
 struct work_struct idle2_enable_topon_work;
 struct delayed_work idle2_cancel_topon_work;
-bool top_status __read_mostly;
 
 /*
  * For saving & restoring VIC register before entering
@@ -89,7 +87,7 @@ inline static bool check_sdmmc_op(unsigned int ch)
 	void __iomem *base_addr;
 
 	if (unlikely(ch > 2)) {
-		pr_err("Invalid ch[%d] for SD/MMC \n", ch);
+		printk(KERN_ERR "Invalid ch[%d] for SD/MMC \n", ch);
 		return false;
 	}
 
@@ -113,7 +111,9 @@ inline static bool loop_sdmmc_check(void)
 
 	for (iter = 0; iter < 3; iter++) {
 		if (unlikely(check_sdmmc_op(iter))) {
-			pr_debug("%s: %d returns true\n", __func__, iter);
+#ifdef CONFIG_S5P_IDLE2_DEBUG
+			printk(KERN_INFO "%s: %d returns true\n", __func__, iter);
+#endif
 			return true;
 		}
 	}
@@ -136,7 +136,9 @@ inline static bool check_onenand_op(void)
 	val = __raw_readl(base_addr + 0x0000010c);
 
 	if (unlikely(val & 0x1)) {
-		pr_debug("%s: check_onenand_op() returns true\n", __func__);
+#ifdef CONFIG_S5P_IDLE2_DEBUG
+		printk(KERN_INFO "%s: check_onenand_op() returns true\n", __func__);
+#endif
 		return true;
 	}
 	return false;
@@ -150,14 +152,16 @@ inline static bool check_clock_gating(void)
 	val = __raw_readl(S5P_CLKGATE_IP0);
 	if (unlikely(val & (S5P_CLKGATE_IP0_MDMA | S5P_CLKGATE_IP0_PDMA0
 					| S5P_CLKGATE_IP0_G3D | S5P_CLKGATE_IP0_PDMA1))) {
-		pr_debug("%s: S5P_CLKGATE_IP0 - DMA/3D active\n", __func__);
+#ifdef CONFIG_S5P_IDLE2_DEBUG
+		printk(KERN_INFO "%s: S5P_CLKGATE_IP0 - DMA/3D active\n", __func__);
+#endif
 		return true;
 	}
 
 	val = __raw_readl(S5P_CLKGATE_IP3);
 	if (unlikely(val & (S5P_CLKGATE_IP3_I2C0 | S5P_CLKGATE_IP3_I2C_HDMI_DDC
 					| S5P_CLKGATE_IP3_I2C2))) {
-		pr_debug("%s: S5P_CLKGATE_IP3 - i2c / HDMI active\n", __func__);
+		printk(KERN_INFO "%s: S5P_CLKGATE_IP3 - i2c / HDMI active\n", __func__);
 		return true;
 	}
 
@@ -177,10 +181,10 @@ inline static bool enter_idle2_check(void)
 
 inline static bool s5p_vic_interrupt_pending(void)
 {
-	if (unlikely((__raw_readl(VA_VIC0 + VIC_RAW_STATUS) & vic_regs[0]) |
+	if ((__raw_readl(VA_VIC0 + VIC_RAW_STATUS) & vic_regs[0]) |
 		(__raw_readl(VA_VIC1 + VIC_RAW_STATUS) & vic_regs[1]) |
 		(__raw_readl(VA_VIC2 + VIC_RAW_STATUS) & vic_regs[2]) |
-		(__raw_readl(VA_VIC3 + VIC_RAW_STATUS) & vic_regs[3])))
+		(__raw_readl(VA_VIC3 + VIC_RAW_STATUS) & vic_regs[3]))
 		return true;
 	else
 		return false;
@@ -230,11 +234,9 @@ inline static void idle2_pre_idle_cfg_set(void)
 	tmp &= ~((1 << 22) | (1 << 29));
 	__raw_writel(tmp, S5P_EINT_WAKEUP_MASK);
 
-	/* Wake from RTC Alarm, RTC tick, key, HSMMC, i2s & ST */
+	/* Wake from RTC Alarm, RTC tic and i2s */
 	tmp = s3c_irqwake_intmask;
-	tmp &= ~((1 << 1) | (1 << 2) | (1 << 5) | (1 << 9)
-		| (1 << 10) | (1 << 11) | (1 << 12)
-		| (1 << 13) | (1 << 14));
+	tmp &= ~((1 << 1) | (1 << 2) | (1 << 13));
 	__raw_writel(tmp, S5P_WAKEUP_MASK);
 
 	/* Clear wakeup status register */
@@ -243,8 +245,6 @@ inline static void idle2_pre_idle_cfg_set(void)
 
 inline static void idle2_post_wake_cfg_reset(void)
 {
-	// FIXME: Not entirely sure if this is needed
-
 	/* Reset the IDLE CFG register */
 	tmp = __raw_readl(S5P_IDLE_CFG);
 	tmp &= ~(S5P_IDLE_CFG_TL_MASK | S5P_IDLE_CFG_TM_MASK |
@@ -289,10 +289,10 @@ inline static void s5p_gpio_pdn_conf(void)
 	} while (gpio_base <= S5PV210_MP28_BASE);
 }
 
-inline static int s5p_enter_idle2(bool top_status)
+inline static int s5p_enter_idle2(void)
 {
 	if (unlikely(pm_cpu_sleep == NULL)) {
-		pr_err("%s: error: no cpu sleep function\n", __func__);
+		printk(KERN_ERR "%s: error: no cpu sleep function\n", __func__);
 		return -EINVAL;
 	}
 
@@ -308,25 +308,22 @@ inline static int s5p_enter_idle2(bool top_status)
 	 * Return EBUSY if there is an interrupt pending.
 	 */
 	if (unlikely(s5p_vic_interrupt_pending())) {
-		pr_debug("%s: VIC interrupt pending, bailing!\n", __func__);
+#ifdef CONFIG_S5P_IDLE2_DEBUG
+		printk(KERN_WARNING "%s: VIC interrupt pending, bailing!\n", __func__);
+#endif
 		s5p_restore_vic_interrupts();
 		return -EBUSY;
 	}
 
 	/* GPIO Power Down Control */
-	if (likely(!top_status))
-		s5p_gpio_pdn_conf();
+	s5p_gpio_pdn_conf();
 
 	/* Configure IDLE_CFG register */
 	tmp = __raw_readl(S5P_IDLE_CFG);
 	/* No idea what this shift is for... */
 	tmp &= ~(0x3fU << 26);
-	if (unlikely(top_status))
-		tmp |= (S5P_IDLE_CFG_TL_ON | S5P_IDLE_CFG_TM_ON
-			| S5P_IDLE_CFG_L2_RET | S5P_IDLE_CFG_DIDLE);
-	else
-		tmp |= (S5P_IDLE_CFG_TL_RET | S5P_IDLE_CFG_TM_RET
-			| S5P_IDLE_CFG_L2_RET | S5P_IDLE_CFG_DIDLE);
+	tmp |= (S5P_IDLE_CFG_TL_RET | S5P_IDLE_CFG_TM_RET
+		| S5P_IDLE_CFG_L2_RET | S5P_IDLE_CFG_DIDLE);
 	__raw_writel(tmp, S5P_IDLE_CFG);
 
 	/* Set configuration for idle entry */
@@ -341,13 +338,64 @@ inline static int s5p_enter_idle2(bool top_status)
 	 */
 	cpu_init();
 
-	if (likely(!top_status)) {
-		/* Release retention of GPIO/MMC/UART IO */
-		tmp = __raw_readl(S5P_OTHERS);
-		tmp |= (S5P_OTHERS_RET_IO | S5P_OTHERS_RET_CF
-			| S5P_OTHERS_RET_MMC | S5P_OTHERS_RET_UART);
-		__raw_writel(tmp, S5P_OTHERS);
+	/* Release retention of GPIO/MMC/UART IO */
+	tmp = __raw_readl(S5P_OTHERS);
+	tmp |= (S5P_OTHERS_RET_IO | S5P_OTHERS_RET_CF
+		| S5P_OTHERS_RET_MMC | S5P_OTHERS_RET_UART);
+	__raw_writel(tmp, S5P_OTHERS);
+
+	/* Post idle configuration restore */
+	idle2_post_wake_cfg_reset();
+	s5p_restore_vic_interrupts();
+
+	return 0;
+}
+
+inline static int s5p_enter_idle2_topon(void)
+{
+	if (unlikely(pm_cpu_sleep == NULL)) {
+		printk(KERN_ERR "%s: error: no cpu sleep function\n", __func__);
+		return -EINVAL;
 	}
+
+	/* ensure at least INFORM0 has the resume address */
+	__raw_writel(virt_to_phys(s3c_cpu_resume), S5P_INFORM0);
+
+	/* Save and disable VIC interrupts */
+	s5p_save_vic_interrupts();
+	s5p_disable_vic_interrupts();
+
+	/*
+	 * Check VIC Status before entering IDLE2 mode.
+	 * Return EBUSY if there is an interrupt pending.
+	 */
+	if (unlikely(s5p_vic_interrupt_pending())) {
+#ifdef CONFIG_S5P_IDLE2_DEBUG
+		printk(KERN_WARNING "%s: VIC interrupt pending, bailing!\n", __func__);
+#endif
+		s5p_restore_vic_interrupts();
+		return -EBUSY;
+	}
+
+	/* Configure IDLE_CFG register */
+	tmp = __raw_readl(S5P_IDLE_CFG);
+	/* No idea what this shift is for... */
+	tmp &= ~(0x3fU << 26);
+	tmp |= (S5P_IDLE_CFG_TL_ON | S5P_IDLE_CFG_TM_ON
+		| S5P_IDLE_CFG_L2_RET | S5P_IDLE_CFG_DIDLE);
+	__raw_writel(tmp, S5P_IDLE_CFG);
+
+	/* Set configuration for idle entry */
+	idle2_pre_idle_cfg_set();
+
+	/* Enter idle2 mode */
+	s3c_idle2_cpu_save(0, PLAT_PHYS_OFFSET - PAGE_OFFSET);
+
+	/*
+	 * We have resumed from IDLE and returned here.
+	 * Use platform CPU init code to continue.
+	 */
+	cpu_init();
 
 	/* Post idle configuration restore */
 	idle2_post_wake_cfg_reset();
@@ -371,7 +419,7 @@ int s5p_init_remap(void)
 
 		res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 		if (!res) {
-			pr_err("failed to get io memory region\n");
+			printk(KERN_ERR "failed to get io memory region\n");
 			return -EINVAL;
 		}
 		/* ioremap for register block */
@@ -381,7 +429,7 @@ int s5p_init_remap(void)
 			chk_dev_op[i].base = ioremap(res->start, 4096);
 
 		if (!chk_dev_op[i].base) {
-			pr_err("failed to remap io region\n");
+			printk(KERN_ERR "failed to remap io region\n");
 			return -EINVAL;
 		}
 	}
