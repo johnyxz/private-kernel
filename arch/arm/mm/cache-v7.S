@@ -243,6 +243,7 @@ ENTRY(v7_flush_kern_dcache_area)
 	cmp	r0, r1
 	blo	1b
 	dsb
+	isb
 	mov	pc, lr
 ENDPROC(v7_flush_kern_dcache_area)
 
