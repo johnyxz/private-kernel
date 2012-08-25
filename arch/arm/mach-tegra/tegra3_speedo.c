@@ -173,9 +173,9 @@ static void fuse_speedo_calib(u32 *speedo_g, u32 *speedo_lp)
 
 static void rev_sku_to_speedo_ids(int rev, int sku)
 {
-	cpu_speedo_id = 3;
+	cpu_speedo_id = 4;
 	soc_speedo_id = 2;
-	threshold_index = 3;
+	threshold_index = 7;
 	return;
 }
 

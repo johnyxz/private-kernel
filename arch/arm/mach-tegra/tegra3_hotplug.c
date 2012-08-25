@@ -185,7 +185,7 @@ module_param_cb(min_online_cpus, &tegra_min_online_ops, &min_online_cpus, 0644);
 
 static void hotplug_online_all(struct work_struct *work)
 {
-	unsigned char cpu;
+	int cpu;
 	for_each_possible_cpu(cpu) {
 		if (likely(!cpu_online(cpu))) {
 			cpu_up(cpu);
@@ -200,7 +200,7 @@ static void hotplug_online_all(struct work_struct *work)
 
 static void hotplug_offline_all(struct work_struct *work)
 {
-	unsigned char cpu;
+	int cpu;
 	for_each_possible_cpu(cpu) {
 		if (likely(cpu_online(cpu) && (cpu != 0))) {
 			cpu_down(cpu);
